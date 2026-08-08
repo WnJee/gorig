@@ -31,7 +31,7 @@ func TestMessageBroker_LocalMemory(t *testing.T) {
 		received = true
 		logger.Info(context.Background(), "Received message", zap.String("topic", msg.Topic), zap.Any("content", msg.Content))
 		assert.Equal(t, "test", msg.Content["name"])
-		assert.Equal(t, int(18), msg.Content["age"])
+		assert.Equal(t, float64(18), msg.Content["age"])
 		return nil
 	})
 	assert.Nil(t, err)
@@ -45,6 +45,9 @@ func TestMessageBroker_LocalMemory(t *testing.T) {
 }
 
 func TestMessageBroker_WithStore(t *testing.T) {
+	if cache.GetRedisInstance[*messagex.Message](context.Background()) == nil {
+		t.Skip("redis not available")
+	}
 	var wg sync.WaitGroup
 	wg.Add(1)
 
@@ -104,6 +107,9 @@ func TestMessageBroker_ConcurrentMessages_Local(t *testing.T) {
 }
 
 func TestMessageBroker_ConcurrentMessages_WithStore(t *testing.T) {
+	if cache.GetRedisInstance[*messagex.Message](context.Background()) == nil {
+		t.Skip("redis not available")
+	}
 	topic := "test.topic.concurrent.store"
 	totalMessages := 100
 
@@ -327,6 +333,9 @@ func TestMessageBroker_ReplayDLQ_Redis(t *testing.T) {
 }
 
 func TestMessageBroker_MultiSubscribers(t *testing.T) {
+	if cache.GetRedisInstance[*messagex.Message](context.Background()) == nil {
+		t.Skip("redis not available")
+	}
 	topic := "test.topic.multi.sub"
 	totalMessages := 2
 	subCount := 2

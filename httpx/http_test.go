@@ -2,10 +2,18 @@ package httpx
 
 import (
 	"github.com/gin-gonic/gin"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
 
 func TestGetReturnsTransportError(t *testing.T) {
 	_, err := Get("http://127.0.0.1:1", nil)
@@ -31,5 +39,45 @@ func TestCORSRejectsUnknownCredentialedOrigin(t *testing.T) {
 	CORS()(c)
 	if r.Code != http.StatusForbidden {
 		t.Fatalf("expected forbidden, got %d", r.Code)
+	}
+}
+
+func TestGetReturnsHTTPErrorForNon2xx(t *testing.T) {
+	previous := client.Load()
+	defer client.Store(previous)
+	client.Store(&http.Client{Transport: roundTripFunc(func(_ *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusBadGateway,
+			Body:       io.NopCloser(strings.NewReader("upstream failed")),
+		}, nil
+	})})
+
+	body, err := Get("http://example.com", nil)
+	if err == nil || body != "upstream failed" {
+		t.Fatalf("expected non-2xx error with response body, got body=%q err=%v", body, err)
+	}
+}
+
+func TestPostXMLEscapesValuesAndRejectsUnsafeNames(t *testing.T) {
+	var requestBody string
+	previous := client.Load()
+	defer client.Store(previous)
+	client.Store(&http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		data, _ := io.ReadAll(r.Body)
+		requestBody = string(data)
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader("ok")),
+		}, nil
+	})})
+
+	if _, err := PostXML("http://example.com", map[string]string{"name": "a&b"}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(requestBody, "a&amp;b") {
+		t.Fatalf("expected escaped XML value, got %q", requestBody)
+	}
+	if _, err := PostXML("http://example.com", map[string]string{"name><bad": "value"}); err == nil {
+		t.Fatal("expected unsafe XML element name to be rejected")
 	}
 }

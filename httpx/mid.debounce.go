@@ -80,18 +80,15 @@ func Debounce(duration time.Duration) gin.HandlerFunc {
 		//requestMap.Lock()
 		//lastRequestTime, exists := requestMap.m[requestKey]
 
-		lastRequestTime, exists := srm.Get(requestKey)
-		since := time.Since(lastRequestTime)
-		if exists && since < duration {
+		now := time.Now()
+		lastRequestTime, allowed := srm.Allow(requestKey, now, duration)
+		since := now.Sub(lastRequestTime)
+		if !allowed {
 			//requestMap.Unlock()
 			logger.Error(c, "Debounce", zap.Any("requestKey", requestKey), zap.Any("lastRequestTime", lastRequestTime), zap.Any("since", since), zap.Any("duration", duration))
 			response.ErrorTooManyRequests(c)
 			return
 		}
-		//requestMap.m[requestKey] = time.Now()
-		//requestMap.Unlock()
-		srm.Set(requestKey, time.Now())
-
 		c.Next()
 	}
 }
@@ -125,6 +122,21 @@ func (srm *ShardedRequestMap) Set(key string, value time.Time) {
 	shard.Lock()
 	defer shard.Unlock()
 	shard.m[key] = value
+}
+
+// Allow atomically checks the last request and records the current time. A
+// separate Get followed by Set lets concurrent requests pass the debounce
+// window together.
+func (srm *ShardedRequestMap) Allow(key string, now time.Time, duration time.Duration) (last time.Time, allowed bool) {
+	shard := srm.getShard(key)
+	shard.Lock()
+	defer shard.Unlock()
+	last, exists := shard.m[key]
+	if exists && now.Sub(last) < duration {
+		return last, false
+	}
+	shard.m[key] = now
+	return last, true
 }
 
 func (srm *ShardedRequestMap) startCleanupRoutine() {

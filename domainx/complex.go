@@ -34,7 +34,7 @@ func NewComplex[T any](conType ConType, dbName string, table string) *Complex[T]
 }
 
 func (c *Complex[T]) TableName() string {
-	if c.Con != nil {
+	if c != nil && c.Con != nil {
 		return c.Con.TableName()
 	}
 	return ""

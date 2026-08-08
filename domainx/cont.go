@@ -12,6 +12,9 @@ func (c ConType) String() string {
 }
 
 func (c *Con) GetConType() ConType {
+	if c == nil {
+		return ""
+	}
 	if c.ConType == "" {
 		return Mysql
 	}
@@ -19,6 +22,9 @@ func (c *Con) GetConType() ConType {
 }
 
 func (c *Con) GetConStr() string {
+	if c == nil {
+		return ""
+	}
 	switch c.GetConType() {
 	case Mysql:
 		return "Mysql"

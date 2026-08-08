@@ -98,23 +98,37 @@ func (d *dx[T]) WithContext(ctx context.Context) DQuery[T] {
 }
 
 func (d *dx[T]) Complex() *domainx.Complex[T] {
+	if d == nil {
+		return nil
+	}
 	return d.complex
 }
 
 func (d *dx[T]) GetData() *T {
+	if d == nil || d.complex == nil {
+		return nil
+	}
 	return d.complex.Data
 }
 
 func (d *dx[T]) GetCon() *domainx.Con {
+	if d == nil || d.complex == nil {
+		return nil
+	}
 	return d.complex.Con
 }
 
 func (d *dx[T]) SetID(id int64) {
-	d.complex.Con.SetID(id)
+	if con := d.GetCon(); con != nil {
+		con.SetID(id)
+	}
 }
 
 func (d *dx[T]) GetID() domainx.ID {
-	return d.complex.Con.GetID()
+	if con := d.GetCon(); con != nil {
+		return con.GetID()
+	}
+	return 0
 }
 
 func (d *dx[T]) WithID(id int64) DQuery[T] {
@@ -123,12 +137,21 @@ func (d *dx[T]) WithID(id int64) DQuery[T] {
 }
 
 func (d *dx[T]) GenerateID() DQuery[T] {
-	d.complex.Con.GenerateID()
+	if con := d.GetCon(); con != nil {
+		con.GenerateID()
+	}
 	return d
 }
 
 func (d *dx[T]) isNil() bool {
-	return d.complex == nil || d.complex.Con == nil || d.GetData() == nil
+	return d == nil || d.complex == nil || d.complex.Con == nil || d.GetData() == nil
+}
+
+func (d *dx[T]) ready() *errors.Error {
+	if d == nil || d.complex == nil || d.complex.Con == nil {
+		return errors.Sys("database connection is not initialized")
+	}
+	return nil
 }
 
 func (d *dx[T]) IsZero() bool {
@@ -221,7 +244,7 @@ func (d *dx[T]) AddMatches(ms *domainx.Matches) DQuery[T] {
 }
 
 func (d *dx[T]) Sort(field string, asc ...bool) DQuery[T] {
-	if field == "" {
+	if field == "" || d == nil || d.complex == nil || d.complex.Con == nil {
 		return d
 	}
 	d.complex.Sort.AddSort(field, len(asc) > 0 && asc[0])
@@ -243,6 +266,9 @@ func (d *dx[T]) Omit(fields ...string) DQuery[T] {
 }
 
 func (d *dx[T]) Save(t ...*T) (id int64, err *errors.Error) {
+	if err := d.ready(); err != nil {
+		return 0, err
+	}
 	if len(t) > 0 && any(t[0]) != nil {
 		d.complex.Data = t[0]
 	}
@@ -250,6 +276,9 @@ func (d *dx[T]) Save(t ...*T) (id int64, err *errors.Error) {
 }
 
 func (d *dx[T]) checkMatches() *errors.Error {
+	if err := d.ready(); err != nil {
+		return err
+	}
 	if d.IsZero() && (d.matches == nil || len(*d.matches) == 0) {
 		return errors.Sys("id is zero or matches not set")
 	}
@@ -266,6 +295,9 @@ func (d *dx[T]) Update(field string, value any) *errors.Error {
 	if value == nil {
 		return errors.Sys("value cannot be nil")
 	}
+	if err := d.ready(); err != nil {
+		return err
+	}
 	if !d.IsZero() {
 		return domainx.UpdatePart(d.complex.Con, d.GetID().Int64(), map[string]interface{}{field: value})
 	}
@@ -280,6 +312,9 @@ func (d *dx[T]) Updates(data map[string]interface{}) *errors.Error {
 	if len(data) == 0 {
 		return errors.Sys("data map cannot be empty")
 	}
+	if err := d.ready(); err != nil {
+		return err
+	}
 	if !d.IsZero() {
 		return domainx.UpdatePart(d.complex.Con, d.GetID().Int64(), data)
 	}
@@ -291,6 +326,9 @@ func (d *dx[T]) Updates(data map[string]interface{}) *errors.Error {
 }
 
 func (d *dx[T]) Delete() *errors.Error {
+	if err := d.ready(); err != nil {
+		return err
+	}
 	if !d.IsZero() {
 		return domainx.Delete(d.complex.Con, d)
 	}
@@ -306,6 +344,9 @@ func (d *dx[T]) First() (*domainx.Complex[T], *errors.Error) {
 }
 
 func (d *dx[T]) Get() (*domainx.Complex[T], *errors.Error) {
+	if err := d.ready(); err != nil {
+		return nil, err
+	}
 	if !d.IsZero() {
 		if err := domainx.GetByID(d.complex.Con, d.GetID().Int64(), d.complex); err != nil {
 			return nil, err
@@ -323,6 +364,9 @@ func (d *dx[T]) Get() (*domainx.Complex[T], *errors.Error) {
 }
 
 func (d *dx[T]) Find() (domainx.ComplexList[T], *errors.Error) {
+	if err := d.ready(); err != nil {
+		return nil, err
+	}
 	if err := d.checkMatches(); err != nil {
 		return nil, err
 	}
@@ -378,6 +422,9 @@ func (d *dx[T]) AllEach(handle func(*domainx.Complex[T]) *errors.Error) *errors.
 }
 
 func (d *dx[T]) Count() (int64, *errors.Error) {
+	if err := d.ready(); err != nil {
+		return 0, err
+	}
 	count, err := domainx.CountByMatch(d.complex.Con, *d.matches)
 	if err != nil {
 		return 0, err
@@ -386,6 +433,9 @@ func (d *dx[T]) Count() (int64, *errors.Error) {
 }
 
 func (d *dx[T]) Exists() (bool, *errors.Error) {
+	if err := d.ready(); err != nil {
+		return false, err
+	}
 	if !d.IsZero() {
 		if err := domainx.GetByID(d.complex.Con, d.GetID().Int64(), d.complex); err != nil {
 			return false, err
@@ -406,6 +456,9 @@ func (d *dx[T]) Sum(field string) (float64, *errors.Error) {
 	if field == "" {
 		return 0, errors.Sys("field name cannot be empty")
 	}
+	if err := d.ready(); err != nil {
+		return 0, err
+	}
 	sum, err := domainx.SumByMatch(d.complex.Con, *d.matches, field)
 	if err != nil {
 		return 0, err
@@ -414,6 +467,9 @@ func (d *dx[T]) Sum(field string) (float64, *errors.Error) {
 }
 
 func (d *dx[T]) Page(page, size int64, lastID ...int64) (*load.PageRespT[*domainx.Complex[T]], *errors.Error) {
+	if err := d.ready(); err != nil {
+		return nil, err
+	}
 	var lID int64
 	if len(lastID) > 0 {
 		lID = lastID[0]

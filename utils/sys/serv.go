@@ -13,10 +13,12 @@ var RunMode Mode
 var WorkingDirectory string
 
 func Exit(err *errors.Error) {
+	exitCode := 0
 	if err != nil {
 		Error("Crash error: ", err.Error())
+		exitCode = 1
 	}
-	os.Exit(0)
+	os.Exit(exitCode)
 }
 
 func init() {

@@ -2,6 +2,8 @@ package tokenx
 
 import (
 	"context"
+	"github.com/dgrijalva/jwt-go"
+	"strings"
 	"testing"
 	"time"
 )
@@ -19,5 +21,20 @@ func TestMemoryTokenExpiryAndEffective(t *testing.T) {
 	time.Sleep(3 * time.Second)
 	if service.Manager.IsEffective(token) {
 		t.Fatal("expired token should not be effective")
+	}
+}
+
+func TestParseTokenRejectsExpiredTokenWithInvalidSignature(t *testing.T) {
+	generator := &jwtGenerator{SigningKey: []byte("test-signing-key")}
+	claims := CustomClaims{StandardClaims: jwt.StandardClaims{ExpiresAt: time.Now().Add(-time.Minute).Unix()}}
+	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(generator.SigningKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parts := strings.Split(token, ".")
+	parts[2] = "invalid"
+	invalid := strings.Join(parts, ".")
+	if _, err := generator.ParseToken(invalid); err == nil {
+		t.Fatal("expired token with an invalid signature must be rejected")
 	}
 }

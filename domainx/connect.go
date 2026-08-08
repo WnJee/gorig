@@ -74,6 +74,9 @@ func (c *Con) GetCon() *Con {
 }
 
 func (c *Con) GetDB() any {
+	if c == nil {
+		return nil
+	}
 	switch c.ConType {
 	case Mysql:
 		return c.MysqlDB
@@ -92,6 +95,9 @@ func (c *Con) GetID() ID {
 }
 
 func (c *Con) SetID(id int64) {
+	if c == nil {
+		return
+	}
 	c.ID = id
 }
 
@@ -100,10 +106,16 @@ func (c *Con) GenerateId() int64 {
 }
 
 func (c *Con) GenerateID() int64 {
+	if c == nil {
+		return 0
+	}
 	return c.GetID().GenerateID()
 }
 
 func (c *Con) GenerateSetID() {
+	if c == nil {
+		return
+	}
 	c.ID = c.GenerateID()
 }
 

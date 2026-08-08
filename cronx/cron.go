@@ -161,32 +161,61 @@ func WrapCronTask(f func(ctx context.Context), doneCallback func(), timeout ...t
 		var cancel context.CancelFunc
 		if len(timeout) > 0 && timeout[0] > 0 {
 			ctx, cancel = context.WithTimeout(ctx, timeout[0])
-			defer cancel()
 		}
 
-		defer func() {
-			if r := recover(); r != nil {
-				debug.PrintStack()
-				log := fmt.Sprintf("TraceID: %s,\nfunc: %v,\nPanic: %v,\nStack: %s",
-					logger.GetTraceID(ctx), name, r, string(debug.Stack()))
-				logger.DPanic(ctx, "cron job panic recovered",
-					zap.String("func", name),
-					zap.Any("recover", r),
-					zap.String("stack", string(debug.Stack())),
-				)
-				go dingding.PanicNotifyDefault(log)
-			}
-			if doneCallback != nil {
-				doneCallback()
-			}
+		runDone := make(chan struct{})
+		go func() {
+			defer close(runDone)
+			defer func() {
+				if r := recover(); r != nil {
+					debug.PrintStack()
+					log := fmt.Sprintf("TraceID: %s,\nfunc: %v,\nPanic: %v,\nStack: %s",
+						logger.GetTraceID(ctx), name, r, string(debug.Stack()))
+					logger.DPanic(ctx, "cron job panic recovered",
+						zap.String("func", name),
+						zap.Any("recover", r),
+						zap.String("stack", string(debug.Stack())),
+					)
+					go dingding.PanicNotifyDefault(log)
+				}
+			}()
+			f(ctx)
 		}()
 
-		f(ctx)
-		if ctx.Err() != nil {
+		timedOut := false
+		if cancel == nil {
+			<-runDone
+		} else {
+			select {
+			case <-runDone:
+			case <-ctx.Done():
+				// Prefer a completed task if both channels became ready together.
+				select {
+				case <-runDone:
+				default:
+					timedOut = true
+				}
+			}
+		}
+
+		if timedOut {
 			logger.Error(ctx, "cron job timeout or canceled",
 				zap.String("func", name),
 				zap.Error(ctx.Err()),
 			)
+		}
+		if cancel != nil {
+			cancel()
+		}
+		if doneCallback != nil {
+			if timedOut {
+				go func() {
+					<-runDone
+					doneCallback()
+				}()
+			} else {
+				doneCallback()
+			}
 		}
 	}
 }

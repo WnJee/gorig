@@ -51,20 +51,25 @@ func (j *jwtGenerator) ParseToken(tokenString string) (*CustomClaims, *errors.Er
 		return nil, errors.Verify(errc.ErrorsTokenInvalid)
 	}
 	if err != nil {
-		if ve, ok := err.(*jwt.ValidationError); ok {
-			if ve.Errors&jwt.ValidationErrorMalformed != 0 {
-				return nil, errors.Verify(errc.ErrorsTokenMalFormed)
-			} else if ve.Errors&jwt.ValidationErrorNotValidYet != 0 {
-				return nil, errors.Verify(errc.ErrorsTokenNotActiveYet)
-			} else if ve.Errors&jwt.ValidationErrorExpired != 0 {
-				token.Valid = true
-				goto labelHere
-			} else {
-				return nil, errors.Verify(errc.ErrorsTokenInvalid)
-			}
+		ve, ok := err.(*jwt.ValidationError)
+		if !ok {
+			return nil, errors.Verify(errc.ErrorsTokenInvalid)
 		}
+		if ve.Errors&jwt.ValidationErrorMalformed != 0 {
+			return nil, errors.Verify(errc.ErrorsTokenMalFormed)
+		}
+		if ve.Errors&jwt.ValidationErrorNotValidYet != 0 {
+			return nil, errors.Verify(errc.ErrorsTokenNotActiveYet)
+		}
+		// An expired token is intentionally returned so token refresh can inspect
+		// its claims, but only when expiration is the sole validation failure.
+		// In particular, never turn an expired token with a bad signature into a
+		// valid token.
+		if ve.Errors != jwt.ValidationErrorExpired {
+			return nil, errors.Verify(errc.ErrorsTokenInvalid)
+		}
+		token.Valid = true
 	}
-labelHere:
 	if claims, ok := token.Claims.(*CustomClaims); ok && token.Valid {
 		return claims, nil
 	} else {

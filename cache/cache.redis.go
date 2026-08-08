@@ -8,6 +8,7 @@ import (
 	"github.com/go-redis/redis/v8"
 	configure "github.com/jom-io/gorig/utils/cofigure"
 	"github.com/jom-io/gorig/utils/sys"
+	"github.com/rs/xid"
 	"github.com/spf13/cast"
 	"sync"
 	"time"
@@ -29,6 +30,9 @@ func RestRedisInstance() {
 }
 
 func GetRedisInstance[T any](ctx context.Context) *RedisCache[T] {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	initMu.Lock()
 	defer initMu.Unlock()
 	if redisInstance == nil {
@@ -82,6 +86,22 @@ type RedisCache[T any] struct {
 	Ctx    context.Context
 }
 
+type delayedEntry struct {
+	ID    string          `json:"id"`
+	Value json.RawMessage `json:"value"`
+}
+
+// Redis sorted-set members are unique by value. Wrapping the payload with a
+// generated ID prevents identical delayed messages from replacing one another.
+var popDueDelayedScript = redis.NewScript(`
+local items = redis.call('ZRANGEBYSCORE', KEYS[1], '-inf', ARGV[1], 'LIMIT', 0, ARGV[2])
+for _, item in ipairs(items) do
+
+	redis.call('ZREM', KEYS[1], item)
+end
+return items
+`)
+
 func (r *RedisCache[T]) LPop(queue string) (value T, err error) {
 	if !r.IsInitialized() {
 		return value, fmt.Errorf("redis client is nil")
@@ -107,9 +127,13 @@ func (r *RedisCache[T]) AddDelayed(queue string, value T, score float64) error {
 	if err != nil {
 		return err
 	}
+	member, err := json.Marshal(delayedEntry{ID: xid.New().String(), Value: b})
+	if err != nil {
+		return err
+	}
 	return r.Client.ZAdd(r.Ctx, queue, &redis.Z{
 		Score:  score,
-		Member: b,
+		Member: member,
 	}).Err()
 }
 
@@ -120,13 +144,7 @@ func (r *RedisCache[T]) PopDueDelayed(queue string, now float64, limit int) ([]T
 	if limit <= 0 {
 		limit = 100
 	}
-	rangeBy := &redis.ZRangeBy{
-		Min:    "-inf",
-		Max:    fmt.Sprintf("%f", now),
-		Offset: 0,
-		Count:  int64(limit),
-	}
-	items, err := r.Client.ZRangeByScore(r.Ctx, queue, rangeBy).Result()
+	items, err := popDueDelayedScript.Run(r.Ctx, r.Client, []string{queue}, now, limit).StringSlice()
 	if err != nil {
 		return nil, err
 	}
@@ -134,19 +152,25 @@ func (r *RedisCache[T]) PopDueDelayed(queue string, now float64, limit int) ([]T
 		return nil, nil
 	}
 
-	removed := make([]interface{}, 0, len(items))
 	results := make([]T, 0, len(items))
 	for _, item := range items {
-		var v T
-		if err := json.Unmarshal([]byte(item), &v); err == nil {
+		var entry delayedEntry
+		if err := json.Unmarshal([]byte(item), &entry); err == nil && entry.ID != "" && len(entry.Value) > 0 {
+			var v T
+			if err := json.Unmarshal(entry.Value, &v); err != nil {
+				return nil, err
+			}
 			results = append(results, v)
-			removed = append(removed, item)
+			continue
 		}
-	}
-	if len(removed) > 0 {
-		if err := r.Client.ZRem(r.Ctx, queue, removed...).Err(); err != nil {
+
+		// Accept members written by older versions that stored the payload
+		// directly, so a rolling deployment does not discard pending messages.
+		var v T
+		if err := json.Unmarshal([]byte(item), &v); err != nil {
 			return nil, err
 		}
+		results = append(results, v)
 	}
 	return results, nil
 }
@@ -270,6 +294,33 @@ func (r *RedisCache[T]) RPush(queue string, value T) error {
 	return r.Client.RPush(r.Ctx, queue, b).Err()
 }
 
+// BLPopCtx consumes the oldest item from a Redis list. It is kept separate
+// from BRPopCtx because RPUSH + BRPOP has LIFO semantics, while cache queues
+// and the message broker promise FIFO delivery.
+func (r *RedisCache[T]) BLPopCtx(ctx context.Context, timeout time.Duration, queue string) (value T, err error) {
+	if !r.IsInitialized() {
+		return value, fmt.Errorf("redis client is nil")
+	}
+	result, err := r.Client.BLPop(ctx, timeout, queue).Result()
+	if err != nil {
+		if errors.Is(err, redis.Nil) {
+			return value, ErrCacheMiss
+		}
+		return value, err
+	}
+	if len(result) != 2 {
+		return value, fmt.Errorf("invalid result length from BLPop for queue %s", queue)
+	}
+	if err = json.Unmarshal([]byte(result[1]), &value); err != nil {
+		return value, err
+	}
+	return value, nil
+}
+
+func (r *RedisCache[T]) BLPop(timeout time.Duration, queue string) (value T, err error) {
+	return r.BLPopCtx(r.Ctx, timeout, queue)
+}
+
 func (r *RedisCache[T]) BRPopCtx(ctx context.Context, timeout time.Duration, queue string) (value T, err error) {
 	if !r.IsInitialized() {
 		return value, fmt.Errorf("redis client is nil")
@@ -314,5 +365,5 @@ func (r *RedisCache[T]) Flush() error {
 	if !r.IsInitialized() {
 		return fmt.Errorf("redis client is nil")
 	}
-	return r.Client.FlushAll(r.Ctx).Err()
+	return r.Client.FlushDB(r.Ctx).Err()
 }

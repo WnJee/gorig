@@ -308,7 +308,7 @@ func mysqlNearExpr(near NearMatch) string {
 	return "6371 * acos(cos(radians(?)) * cos(radians(" + near.LatField + ")) * cos(radians(" + near.LngField + ") - radians(?)) + sin(radians(?)) * sin(radians(" + near.LatField + ")))"
 }
 
-func sortMysqlCond(sortList Sorts, tx *gorm.DB) {
+func sortMysqlCond(sortList Sorts, tx *gorm.DB) *gorm.DB {
 	if len(sortList) > 0 {
 		for _, v := range sortList {
 			if v == nil || !Check(v.Field) {
@@ -322,6 +322,7 @@ func sortMysqlCond(sortList Sorts, tx *gorm.DB) {
 			tx = tx.Order(v.Field + desc)
 		}
 	}
+	return tx
 }
 
 func applyMysqlFields(tx *gorm.DB, c *Con, near *NearMatch) *gorm.DB {
@@ -361,7 +362,7 @@ func applyMysqlFields(tx *gorm.DB, c *Con, near *NearMatch) *gorm.DB {
 func (s *gormDBService) FindByMatch(c *Con, matchList []Match, result interface{}, prefixes ...string) error {
 	tx := c.MysqlDB.WithContext(c.Ctx).Table(c.TableName())
 	tx, near := matchMysqlCond(matchList, tx)
-	sortMysqlCond(c.Sort, tx)
+	tx = sortMysqlCond(c.Sort, tx)
 	tx = applyMysqlFields(tx, c, near)
 	if err := tx.Limit(10000).Find(result).Error; err != nil {
 		return err
@@ -372,7 +373,7 @@ func (s *gormDBService) FindByMatch(c *Con, matchList []Match, result interface{
 func (s *gormDBService) GetByMatch(c *Con, matchList []Match, result interface{}) error {
 	tx := c.MysqlDB.WithContext(c.Ctx).Table(c.TableName())
 	tx, near := matchMysqlCond(matchList, tx)
-	sortMysqlCond(c.Sort, tx)
+	tx = sortMysqlCond(c.Sort, tx)
 	tx = applyMysqlFields(tx, c, near)
 	if err := tx.First(result).Error; err != nil {
 		return err
@@ -419,7 +420,7 @@ func (s *gormDBService) SumByMatch(c *Con, matchList []Match, field string) (flo
 func (s *gormDBService) FindByPageMatch(c *Con, matchList []Match, page *load.Page, total *load.Total, result interface{}, prefixes ...string) error {
 	tx := c.MysqlDB.WithContext(c.Ctx).Table(c.TableName())
 	tx, near := matchMysqlCond(matchList, tx)
-	sortMysqlCond(c.Sort, tx)
+	tx = sortMysqlCond(c.Sort, tx)
 	count := int64(0)
 	if err := tx.Model(result).Count(&count).Error; err != nil {
 		return err

@@ -58,8 +58,11 @@ func sign(merType tokenx.ManagerType, userFilter map[string]interface{}) gin.Han
 
 func filterUserInfo(userInfo map[string]interface{}, filter map[string]interface{}) bool {
 	//logger.Info(nil, "filterUserInfo", zap.Any("userInfo", userInfo), zap.Any("filter", filter))
-	if userInfo == nil || filter == nil {
+	if filter == nil {
 		return true
+	}
+	if userInfo == nil {
+		return false
 	}
 	for k, v := range filter {
 		if v == nil {
@@ -67,24 +70,53 @@ func filterUserInfo(userInfo map[string]interface{}, filter map[string]interface
 		}
 		switch v {
 		case consts.NotNull:
-			if _, exists := userInfo[k]; !exists {
+			userValue, exists := userInfo[k]
+			if !exists {
 				return false
 			}
-			if userInfo[k] == nil || userInfo[k] == "" {
+			if userValue == nil || userValue == "" {
 				return false
 			}
 		default:
-			userValue := cast.ToString(userInfo[k])
-			if strings.Contains(userValue, ",") {
-				if !strings.Contains(userValue, cast.ToString(v)) {
-					return false
-				}
-			} else if userValue != v {
+			rawValue, exists := userInfo[k]
+			if !exists || !matchesFilterValue(rawValue, cast.ToString(v)) {
 				return false
 			}
 		}
 	}
 	return true
+}
+
+func matchesFilterValue(value interface{}, expected string) bool {
+	if value == nil {
+		return false
+	}
+	if values, ok := value.([]string); ok {
+		for _, item := range values {
+			if item == expected {
+				return true
+			}
+		}
+		return false
+	}
+	if values, ok := value.([]interface{}); ok {
+		for _, item := range values {
+			if cast.ToString(item) == expected {
+				return true
+			}
+		}
+		return false
+	}
+	valueString := cast.ToString(value)
+	if strings.Contains(valueString, ",") {
+		for _, item := range strings.Split(valueString, ",") {
+			if strings.TrimSpace(item) == expected {
+				return true
+			}
+		}
+		return false
+	}
+	return valueString == expected
 }
 
 //func notNull(m map[string]interface{}, key string) bool {

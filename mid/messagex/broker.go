@@ -44,6 +44,9 @@ type MessageBroker interface {
 }
 
 func (m *Message) GetValue(key string) interface{} {
+	if m == nil {
+		return nil
+	}
 	key = strings.ToLower(key)
 	v, ok := m.Content[key]
 	if !ok {
@@ -98,7 +101,13 @@ func (m *Message) GetValueStr(key string) string {
 }
 
 func (m *Message) SetValue(key string, value interface{}) {
+	if m == nil {
+		return
+	}
 	key = strings.ToLower(key)
+	if m.Content == nil {
+		m.Content = make(map[string]interface{})
+	}
 	m.Content[key] = value
 }
 
@@ -108,7 +117,7 @@ func (m *Message) DeepCopy() *Message {
 	}
 
 	clone := &Message{
-		ID:          xid.New().String(),
+		ID:          m.ID,
 		GroupID:     m.GroupID,
 		TargetGroup: m.TargetGroup,
 		Ctx:         m.Ctx,
@@ -127,6 +136,31 @@ func (m *Message) DeepCopy() *Message {
 	}
 
 	return clone
+}
+
+// prepareMessage takes the caller-owned message snapshot used by both local
+// and Redis brokers. JSON normalization keeps values consistent across the
+// in-process and Redis transports (for example, all JSON numbers become
+// float64), while the stable ID allows consumers to deduplicate retries.
+func prepareMessage(message *Message, groupID string) (*Message, *errors.Error) {
+	clone := message.DeepCopy()
+	if clone.ID == "" {
+		clone.ID = xid.New().String()
+	}
+	clone.TargetGroup = groupID
+	if clone.Content == nil {
+		return clone, nil
+	}
+	raw, err := json.Marshal(clone.Content)
+	if err != nil {
+		return nil, errors.Sys(fmt.Sprintf("message content encode error: %v", err))
+	}
+	content := make(map[string]interface{}, len(clone.Content))
+	if err := json.Unmarshal(raw, &content); err != nil {
+		return nil, errors.Sys(fmt.Sprintf("message content decode error: %v", err))
+	}
+	clone.Content = content
+	return clone, nil
 }
 
 func deepCopyValue(value interface{}) interface{} {

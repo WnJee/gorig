@@ -427,7 +427,10 @@ func runPersistHandler(ctx context.Context, handler persistRegisteredHandler, ta
 		return handler.run(runCtx, task.Payload)
 	}
 
-	runCtx := logger.NewCtx()
+	runCtx := ctx
+	if runCtx == nil {
+		runCtx = logger.NewCtx()
+	}
 	if task.TimeoutMillis <= 0 {
 		return call(runCtx)
 	}

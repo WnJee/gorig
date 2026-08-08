@@ -7,6 +7,7 @@ import (
 	"github.com/jom-io/gorig/global/consts"
 	"github.com/jom-io/gorig/utils/errors"
 	"github.com/jom-io/gorig/utils/logger"
+	"github.com/rs/xid"
 	"go.uber.org/zap"
 	"sync"
 	"sync/atomic"
@@ -38,7 +39,7 @@ type subscription struct {
 
 type store[T any] interface {
 	RPush(topic string, message T) error
-	BRPopCtx(ctx context.Context, timeout time.Duration, queue string) (value T, err error)
+	BLPopCtx(ctx context.Context, timeout time.Duration, queue string) (value T, err error)
 	LPop(queue string) (value T, err error)
 	AddDelayed(queue string, message T, score float64) error
 	PopDueDelayed(queue string, now float64, limit int) ([]T, error)
@@ -95,7 +96,10 @@ func NewSimpleByType(brokerType BrokerType) *SimpleMessageBroker {
 		brokerType: brokerType,
 	}
 	if brokerType == Redis {
-		simpleBroker.store = cache.GetRedisInstance[*Message](context.Background())
+		redisStore := cache.GetRedisInstance[*Message](context.Background())
+		if redisStore != nil {
+			simpleBroker.store = redisStore
+		}
 	}
 	return simpleBroker
 }
@@ -119,10 +123,17 @@ func (mb *SimpleMessageBroker) StartStoreListener(topic string) {
 					logger.Info(nil, "Stopping listener for topic", zap.String("topic", topic))
 					return
 				default:
-					msg, err := mb.store.BRPopCtx(ctx, 0, topic)
+					msg, err := mb.store.BLPopCtx(ctx, 0, topic)
 					if err != nil {
-						logger.Error(nil, "redis BRPop error", zap.String("topic", topic), zap.Error(err))
-						time.Sleep(2 * time.Second) // Retry after a short delay
+						if ctx.Err() != nil {
+							return
+						}
+						logger.Error(nil, "redis BLPop error", zap.String("topic", topic), zap.Error(err))
+						select {
+						case <-ctx.Done():
+							return
+						case <-time.After(2 * time.Second):
+						}
 						continue
 					}
 					if msg.GroupID != "" {
@@ -166,6 +177,9 @@ func (mb *SimpleMessageBroker) subscribe(topic string, groupID string, handler f
 	}
 	if handler == nil {
 		return 0, errors.Verify("message handler cannot be nil")
+	}
+	if mb.brokerType == Redis && mb.store == nil {
+		return 0, errors.Sys("redis message broker is not initialized")
 	}
 	mb.topicLock.Lock()
 	defer mb.topicLock.Unlock()
@@ -286,29 +300,45 @@ func (mb *SimpleMessageBroker) publish(topic string, groupID string, message *Me
 			asyncSubs = append(asyncSubs, sub)
 		}
 	}
+	baseMessage := message.DeepCopy()
+	if baseMessage.ID == "" {
+		baseMessage.ID = xid.New().String()
+	}
 
 	// 顺序订阅同步发送，保证发布顺序
 	for _, sub := range seqSubs {
 		select {
-		case sub.ch <- message.DeepCopy():
+		case sub.ch <- baseMessage.DeepCopy():
 		case <-sub.done:
 		}
 	}
 
-	// 异步订阅保持原有非阻塞语义
+	// Take snapshots before starting the goroutine. This prevents a caller
+	// mutating the original message after Publish returns from racing with the
+	// asynchronous delivery path.
 	if len(asyncSubs) > 0 {
+		deliveries := make([]struct {
+			sub *subscription
+			msg *Message
+		}, 0, len(asyncSubs))
+		for _, sub := range asyncSubs {
+			deliveries = append(deliveries, struct {
+				sub *subscription
+				msg *Message
+			}{sub: sub, msg: baseMessage.DeepCopy()})
+		}
 		go func() {
 			defer func() {
 				if r := recover(); r != nil {
-					logger.Error(nil, "message publish panic", zap.Any("panic", r), zap.String("topic", topic), zap.Any("message", message))
+					logger.Error(nil, "message publish panic", zap.Any("panic", r), zap.String("topic", topic), zap.Any("message", baseMessage))
 				}
 			}()
-			for _, sub := range asyncSubs {
+			for _, delivery := range deliveries {
 				select {
-				case sub.ch <- message.DeepCopy():
-				case <-sub.done:
+				case delivery.sub.ch <- delivery.msg:
+				case <-delivery.sub.done:
 				default:
-					logger.Error(nil, fmt.Sprintf("topic %s message queue full", topic), zap.Any("message", message))
+					logger.Error(nil, fmt.Sprintf("topic %s message queue full", topic), zap.Any("message", baseMessage))
 				}
 			}
 		}()
@@ -319,16 +349,21 @@ func (mb *SimpleMessageBroker) PublishGroup(topic string, groupID string, messag
 	if topic == "" || message == nil {
 		return errors.Verify("topic and message are required")
 	}
+	if mb.brokerType == Redis && mb.store == nil {
+		return errors.Sys("redis message broker is not initialized")
+	}
+	prepared, err := prepareMessage(message, groupID)
+	if err != nil {
+		return err
+	}
 	if mb.store != nil {
-		message = message.DeepCopy()
-		message.TargetGroup = groupID
-		if err := mb.store.RPush(topic, message); err != nil {
+		if err := mb.store.RPush(topic, prepared); err != nil {
 			logger.Error(nil, "store RPush error", zap.String("topic", topic), zap.Error(err))
 			return errors.Sys(fmt.Sprintf("store RPush error for topic %s: %v", topic, err))
 		}
 		return nil
 	}
-	mb.publish(topic, groupID, message)
+	mb.publish(topic, groupID, prepared)
 	return nil
 }
 
@@ -510,6 +545,11 @@ func (mb *SimpleMessageBroker) promoteDelayed(topic string) {
 		}
 		if err := mb.store.RPush(topic, msg); err != nil {
 			logger.Error(msg.Ctx, "push delayed to ready failed", zap.String("topic", topic), zap.Error(err))
+			// The delayed entry was atomically claimed before this push. Put it
+			// back with a short delay so a transient Redis failure does not lose it.
+			if retryErr := mb.store.AddDelayed(topic+":delay", msg, float64(time.Now().Add(time.Second).UnixMilli())); retryErr != nil {
+				logger.Error(msg.Ctx, "restore delayed message failed", zap.String("topic", topic), zap.Error(retryErr))
+			}
 		}
 	}
 }
@@ -533,10 +573,12 @@ func (mb *SimpleMessageBroker) StartListening() {
 }
 
 func (mb *SimpleMessageBroker) StopListening() {
+	mb.topicLock.Lock()
+	defer mb.topicLock.Unlock()
 	mb.subscribers.Range(func(key, value interface{}) bool {
 		subs := value.([]*subscription)
 		for _, sub := range subs {
-			close(sub.ch)
+			sub.stopOnce.Do(func() { close(sub.done) })
 		}
 		mb.subscribers.Delete(key)
 		mb.topicOnce.Delete(key.(string))

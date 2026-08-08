@@ -325,9 +325,8 @@ func (s *mongoDBService) UpdatePart(c *Con, id int64, data map[string]interface{
 		return e
 	} else {
 		m := mapToBsonM(data)
-		m["options.updateTime"] = time.Now()
-		mErr := coll.UpdateOne(c.Ctx, bson.M{"con.id": id}, bson.M{"$set": mapToBsonM(data)})
-		return mErr
+		m["options.updateAt"] = time.Now()
+		return coll.UpdateOne(c.Ctx, bson.M{"con.id": id}, bson.M{"$set": m})
 	}
 }
 
@@ -597,7 +596,7 @@ func (s *mongoDBService) ExistsByMatch(c *Con, matchList []Match) (bool, error) 
 		if checkErr.Is(e, mongo.ErrNoDocuments) || checkErr.Is(e, mongo.ErrNilDocument) {
 			return false, nil
 		}
-		return false, errors.Sys(fmt.Sprintf("ExistsByMatch error: %v", err))
+		return false, errors.Sys(fmt.Sprintf("ExistsByMatch error: %v", e))
 	}
 	return true, nil
 }

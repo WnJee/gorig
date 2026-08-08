@@ -13,6 +13,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -62,6 +63,18 @@ func buildURL(baseURL string, params map[string]string) (string, *errors.Error) 
 	return parsed.String(), nil
 }
 
+func readHTTPResponse(response *http.Response) (string, *errors.Error) {
+	defer response.Body.Close()
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		return "", errors.Sys(fmt.Sprintf("io.ReadAll error: %v", err))
+	}
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		return string(body), errors.Sys(fmt.Sprintf("http status %d: %s", response.StatusCode, string(body)))
+	}
+	return string(body), nil
+}
+
 func Get(baseURL string, params map[string]string) (resp string, err *errors.Error) {
 	reqURL, buildErr := buildURL(baseURL, params)
 	if buildErr != nil {
@@ -72,14 +85,7 @@ func Get(baseURL string, params map[string]string) (resp string, err *errors.Err
 	if httpErr != nil {
 		return "", errors.Sys("http.Get error", httpErr)
 	}
-	defer response.Body.Close()
-
-	body, readErr := io.ReadAll(response.Body)
-	if readErr != nil {
-		return "", errors.Sys(fmt.Sprintf("ioutil.ReadAll error: %v", readErr.Error()))
-	}
-
-	return string(body), nil
+	return readHTTPResponse(response)
 }
 
 func GetHeader(baseURL string, params map[string]string, header map[string]string) (resp string, err *errors.Error) {
@@ -99,14 +105,7 @@ func GetHeader(baseURL string, params map[string]string, header map[string]strin
 	if httpErr != nil {
 		return "", errors.Sys(fmt.Sprintf("http.Do error: %v", httpErr))
 	}
-	defer response.Body.Close()
-
-	body, readErr := io.ReadAll(response.Body)
-	if readErr != nil {
-		return "", errors.Sys(fmt.Sprintf("ioutil.ReadAll error: %v", readErr))
-	}
-
-	return string(body), nil
+	return readHTTPResponse(response)
 }
 
 func GetMap(baseURL string, params map[string]string) (map[string]interface{}, *errors.Error) {
@@ -135,14 +134,7 @@ func PostForm(baseURL string, params map[string]string) (resp string, err *error
 	if httpErr != nil {
 		return "", errors.Sys(fmt.Sprintf("http.PostForm error: %v", httpErr.Error()))
 	}
-	defer response.Body.Close()
-
-	body, readErr := io.ReadAll(response.Body)
-	if readErr != nil {
-		return "", errors.Sys(fmt.Sprintf("ioutil.ReadAll error: %v", readErr.Error()))
-	}
-
-	return string(body), nil
+	return readHTTPResponse(response)
 }
 
 func PostJSONResp(baseURL string, params interface{}) (resp string, err *errors.Error) {
@@ -156,17 +148,7 @@ func PostJSONResp(baseURL string, params interface{}) (resp string, err *errors.
 	if httpErr != nil { // 注意这里的错误检查修正
 		return "", errors.Sys(fmt.Sprintf("http.Post error: %v", httpErr))
 	}
-	defer response.Body.Close()
-
-	body, readErr := io.ReadAll(response.Body)
-	if readErr != nil {
-		return "", errors.Sys(fmt.Sprintf("io.ReadAll error: %v", readErr))
-	}
-	strBody := string(body)
-	if response.StatusCode != http.StatusOK && response.StatusCode != http.StatusCreated {
-		return strBody, errors.Sys(fmt.Sprintf("http.Post status:%v error: %v", response.StatusCode, string(body)))
-	}
-	return strBody, nil
+	return readHTTPResponse(response)
 }
 
 func PostJSONRespHeader(baseURL string, params interface{}, header map[string]string) (resp string, err *errors.Error) {
@@ -189,14 +171,7 @@ func PostJSONRespHeader(baseURL string, params interface{}, header map[string]st
 	if httpErr != nil {
 		return "", errors.Sys(fmt.Sprintf("http.Do error: %v", httpErr))
 	}
-	defer response.Body.Close()
-
-	body, readErr := io.ReadAll(response.Body)
-	if readErr != nil {
-		return "", errors.Sys(fmt.Sprintf("io.ReadAll error: %v", readErr))
-	}
-
-	return string(body), nil
+	return readHTTPResponse(response)
 }
 
 func PostJSON(baseURL string, params interface{}) (map[string]interface{}, *errors.Error) {
@@ -243,24 +218,30 @@ func GetByCtx(ctx *gin.Context, baseURL string, params map[string]interface{}) (
 }
 
 func PostXML(baseURL string, params map[string]string) (resp string, err *errors.Error) {
-	xmlData := "<xml>"
+	namePattern := regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_.-]*$`)
+	var xmlBuffer bytes.Buffer
+	xmlBuffer.WriteString("<xml>")
 	for k, v := range params {
-		xmlData += fmt.Sprintf("<%s>%s</%s>", k, v, k)
+		if !namePattern.MatchString(k) {
+			return "", errors.Verify(fmt.Sprintf("invalid XML element name: %s", k))
+		}
+		xmlBuffer.WriteByte('<')
+		xmlBuffer.WriteString(k)
+		xmlBuffer.WriteByte('>')
+		if err := xml.EscapeText(&xmlBuffer, []byte(v)); err != nil {
+			return "", errors.Sys(fmt.Sprintf("xml escape error: %v", err))
+		}
+		xmlBuffer.WriteString("</")
+		xmlBuffer.WriteString(k)
+		xmlBuffer.WriteByte('>')
 	}
-	xmlData += "</xml>"
+	xmlBuffer.WriteString("</xml>")
 
-	response, httpErr := getClient().Post(baseURL, "application/xml", bytes.NewReader([]byte(xmlData)))
+	response, httpErr := getClient().Post(baseURL, "application/xml", bytes.NewReader(xmlBuffer.Bytes()))
 	if httpErr != nil {
 		return "", errors.Sys(fmt.Sprintf("http.Post error: %v", httpErr))
 	}
-	defer response.Body.Close()
-
-	body, readErr := io.ReadAll(response.Body)
-	if readErr != nil {
-		return "", errors.Sys(fmt.Sprintf("io.ReadAll error: %v", readErr))
-	}
-
-	return string(body), nil
+	return readHTTPResponse(response)
 }
 
 func ParseJSON(jsonStr string) map[string]interface{} {
@@ -315,6 +296,10 @@ func FetchImage(url string) (imgData []byte, contentType, imgType string, error 
 		return nil, "", imageType, errors.Sys(fmt.Sprintf("http.Get error: %v", httpErr))
 	}
 	defer response.Body.Close()
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		body, _ := io.ReadAll(response.Body)
+		return nil, "", imageType, errors.Sys(fmt.Sprintf("http status %d: %s", response.StatusCode, string(body)))
+	}
 
 	imgData, readErr := io.ReadAll(response.Body)
 	if readErr != nil {

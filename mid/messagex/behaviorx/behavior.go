@@ -9,6 +9,7 @@ import (
 	"github.com/jom-io/gorig/utils/sys"
 	"go.uber.org/zap"
 	"strings"
+	"sync"
 )
 
 // Action and Event are the two main types of behaviors in the system.
@@ -259,21 +260,30 @@ func (b *Behavior) Register(key string) {
 //var behaviors []Behavior
 
 // 分类行为链 使用map存储 key为分类名称 value为数组
-var behaviorMap = map[string][]Behavior{}
+var behaviorMap = map[string][]*Behavior{}
+var behaviorMapMu sync.RWMutex
 
 func RegisterBehavior(key string, behavior *Behavior) {
-	if _, ok := behaviorMap[key]; !ok {
-		behaviorMap[key] = []Behavior{}
+	if behavior == nil {
+		return
 	}
-	behaviorMap[key] = append(behaviorMap[key], *behavior)
+	behaviorMapMu.Lock()
+	defer behaviorMapMu.Unlock()
+	if _, ok := behaviorMap[key]; !ok {
+		behaviorMap[key] = []*Behavior{}
+	}
+	behaviorMap[key] = append(behaviorMap[key], behavior)
 	//logger.Info(nil, "behavior registered", zap.Any("behavior action", behavior.Action), zap.Any("behavior result", behavior.Result))
 	//logger.Info(nil, "all behaviors length", zap.Int("length", len(Behaviors)))
 }
 
 func ExecuteBehaviors(key string) {
-	if behaviors, ok := behaviorMap[key]; ok {
-		for i, _ := range behaviors {
-			behaviors[i].Execute()
+	behaviorMapMu.Lock()
+	defer behaviorMapMu.Unlock()
+	behaviors := append([]*Behavior(nil), behaviorMap[key]...)
+	for _, behavior := range behaviors {
+		if behavior != nil {
+			behavior.Execute()
 		}
 	}
 }
@@ -284,6 +294,8 @@ func Startup(code, port string) error {
 }
 
 func Shutdown(code string, context context.Context) error {
+	behaviorMapMu.Lock()
+	defer behaviorMapMu.Unlock()
 	delete(behaviorMap, code)
 	return nil
 }

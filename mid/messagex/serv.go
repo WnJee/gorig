@@ -124,7 +124,7 @@ func (s *MessageService) UnRegisterTopic(topic any, subID uint64) *errors.Error 
 
 func (s *MessageService) Publish(ctx context.Context, topic any, message *Message) (error *errors.Error) {
 	if message == nil {
-		message = new(Message)
+		return errors.Verify("message cannot be nil")
 	}
 	topicStr := getTopicStr(topic)
 	if topicStr == "" {
@@ -176,6 +176,9 @@ func (s *MessageService) PublishNewMsg(ctx context.Context, topic any, content a
 }
 
 func Publish(topic any, message *Message, brokerType ...BrokerType) (error *errors.Error) {
+	if message == nil {
+		return errors.Verify("message cannot be nil")
+	}
 	if len(brokerType) == 0 {
 		brokerType = []BrokerType{Local}
 	}

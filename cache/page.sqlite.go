@@ -216,7 +216,7 @@ func (c *SQLiteCachePage[T]) ensureIndexesForType() error {
 	for name, key := range single {
 		idxName := sanitizeIndexName("idx_" + c.table + "_" + name)
 		jsonKey := strings.ReplaceAll(key, "'", "")
-		expr := fmt.Sprintf("json_extract(data, '$.%s')", jsonKey)
+		expr := fmt.Sprintf("json_extract(data, %s)", quoteJSONPath(jsonKey))
 		sql := fmt.Sprintf("CREATE INDEX IF NOT EXISTS %s ON %s(%s);", idxName, c.table, expr)
 		if _, err := c.db.ExecContext(ctx, sql); err != nil {
 			return err
@@ -230,7 +230,7 @@ func (c *SQLiteCachePage[T]) ensureIndexesForType() error {
 		exprs := make([]string, 0, len(keys))
 		for _, key := range keys {
 			jsonKey := strings.ReplaceAll(key, "'", "")
-			exprs = append(exprs, fmt.Sprintf("json_extract(data, '$.%s')", jsonKey))
+			exprs = append(exprs, fmt.Sprintf("json_extract(data, %s)", quoteJSONPath(jsonKey)))
 		}
 		sql := fmt.Sprintf("CREATE INDEX IF NOT EXISTS %s ON %s(%s);", idxName, c.table, strings.Join(exprs, ", "))
 		if _, err := c.db.ExecContext(ctx, sql); err != nil {
@@ -306,7 +306,10 @@ func (c *SQLiteCachePage[T]) Find(page, size int64, conditions map[string]any, s
 	where, args := buildWhereClause(conditions)
 
 	//orderBy = fmt.Sprintf("ORDER BY json_extract(data, '$.%s') %s", sort.SortField, desc)
-	orderBy := getOrderByClause(sorts)
+	orderBy, err := getOrderByClause(sorts)
+	if err != nil {
+		return nil, err
+	}
 
 	query := fmt.Sprintf(`SELECT data FROM %s %s %s LIMIT ? OFFSET ?`, c.table, where, orderBy)
 	args = append(args, size, offset)
@@ -334,20 +337,23 @@ func (c *SQLiteCachePage[T]) Find(page, size int64, conditions map[string]any, s
 	return &PageCache[T]{Total: count, Page: page, Size: size, Items: results}, nil
 }
 
-func getOrderByClause(sorts []PageSorter) string {
+func getOrderByClause(sorts []PageSorter) (string, error) {
 	if len(sorts) == 0 {
-		return "ORDER BY id DESC"
+		return "ORDER BY id DESC", nil
 	}
 
 	orderClauses := make([]string, len(sorts))
 	for i, sort := range sorts {
+		if !isSafeJSONField(sort.SortField) {
+			return "", fmt.Errorf("invalid sort field: %s", sort.SortField)
+		}
 		if sort.Asc {
-			orderClauses[i] = fmt.Sprintf("json_extract(data, '$.%s') ASC", sort.SortField)
+			orderClauses[i] = fmt.Sprintf("json_extract(data, %s) ASC", quoteJSONPath(sort.SortField))
 		} else {
-			orderClauses[i] = fmt.Sprintf("json_extract(data, '$.%s') DESC", sort.SortField)
+			orderClauses[i] = fmt.Sprintf("json_extract(data, %s) DESC", quoteJSONPath(sort.SortField))
 		}
 	}
-	return "ORDER BY " + strings.Join(orderClauses, ", ")
+	return "ORDER BY " + strings.Join(orderClauses, ", "), nil
 }
 
 func (c *SQLiteCachePage[T]) GroupByTime(
@@ -375,6 +381,13 @@ func (c *SQLiteCachePage[T]) GroupByTime(
 	if from.After(to) {
 		return nil, fmt.Errorf("from time cannot be after to time")
 	}
+	if !isSafeAgg(agg) {
+		return nil, fmt.Errorf("unsupported aggregation function: %s", agg)
+	}
+	aggFunc := agg
+	if aggFunc == AggTotal {
+		aggFunc = AggSum
+	}
 
 	where, args := buildWhereClause(conditions)
 
@@ -395,8 +408,11 @@ func (c *SQLiteCachePage[T]) GroupByTime(
 		return nil, fmt.Errorf("at least one field must be specified for aggregation")
 	}
 	for i, field := range fields {
-		alias := fmt.Sprintf("agg_%s", field)
-		aggFields = append(aggFields, fmt.Sprintf("%s(CAST(json_extract(data, '$.%s') AS REAL)) as %s", agg, field, alias))
+		if !isSafeJSONField(field) {
+			return nil, fmt.Errorf("invalid aggregation field: %s", field)
+		}
+		alias := sanitizeIndexName(fmt.Sprintf("agg_%s", field))
+		aggFields = append(aggFields, fmt.Sprintf("%s(CAST(json_extract(data, %s) AS REAL)) as %s", aggFunc, quoteJSONPath(field), alias))
 		aggFieldNames[i] = field
 	}
 
@@ -516,6 +532,9 @@ func (c *SQLiteCachePage[T]) GroupByFields(
 			}
 		}
 	}
+	if havingExpr != "" && !isSafeHaving(havingExpr) {
+		return nil, fmt.Errorf("invalid having expression")
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), sqliteTimeOut)
 	defer cancel()
@@ -529,8 +548,14 @@ func (c *SQLiteCachePage[T]) GroupByFields(
 	groupAliases := make([]string, len(groupFields))
 	groupByExprs := make([]string, len(groupFields))
 	for i, gf := range groupFields {
-		alias := sanitizeColumnName(gf)
-		expr := fmt.Sprintf("json_extract(data, '$.%s')", gf)
+		if !isSafeJSONField(gf) {
+			return nil, fmt.Errorf("invalid group field: %s", gf)
+		}
+		alias := sanitizeIndexName(gf)
+		if !isSafeIdentifier(alias) {
+			alias = "_" + alias
+		}
+		expr := fmt.Sprintf("json_extract(data, %s)", quoteJSONPath(gf))
 		groupAliases[i] = alias
 		groupByExprs[i] = expr
 		groupExprs[i] = fmt.Sprintf("%s AS %s", expr, alias)
@@ -539,9 +564,15 @@ func (c *SQLiteCachePage[T]) GroupByFields(
 	aggExprs := make([]string, len(aggFields))
 	aggAliases := make([]string, len(aggFields))
 	for i, af := range aggFields {
+		if !isSafeJSONField(af.Field) || !isSafeAgg(af.Agg) {
+			return nil, fmt.Errorf("invalid aggregation field or function: %s", af.Field)
+		}
 		alias := af.Alias
 		if alias == "" {
 			alias = sanitizeColumnName(af.Field)
+		}
+		if !isSafeIdentifier(alias) {
+			return nil, fmt.Errorf("invalid aggregation alias: %s", alias)
 		}
 		aggAliases[i] = alias
 
@@ -550,13 +581,16 @@ func (c *SQLiteCachePage[T]) GroupByFields(
 			aggFunc = string(AggSum)
 		}
 
-		aggExprs[i] = fmt.Sprintf("%s(CAST(json_extract(data, '$.%s') AS REAL)) AS %s", aggFunc, af.Field, alias)
+		aggExprs[i] = fmt.Sprintf("%s(CAST(json_extract(data, %s) AS REAL)) AS %s", aggFunc, quoteJSONPath(af.Field), alias)
 	}
 
 	selectFields := append(groupExprs, aggExprs...)
 	groupBy := "GROUP BY " + strings.Join(groupAliases, ", ")
 	groupByExpr := "GROUP BY " + strings.Join(groupByExprs, ", ")
-	orderBy := getOrderByClauseRaw(sorts)
+	orderBy, err := getOrderByClauseRaw(sorts)
+	if err != nil {
+		return nil, err
+	}
 	havingSQL := ""
 	if strings.TrimSpace(havingExpr) != "" {
 		havingSQL = " HAVING " + havingExpr
@@ -700,7 +734,7 @@ func buildWhereClause(conditions map[string]any) (string, []any) {
 	clauses := make([]string, 0)
 
 	for k, v := range conditions {
-		field := fmt.Sprintf("json_extract(data, '$.%s')", k)
+		field := fmt.Sprintf("json_extract(data, %s)", quoteJSONPath(k))
 		switch val := v.(type) {
 		case map[string]any:
 			for op, opVal := range val {
@@ -848,9 +882,9 @@ func getWeekStartTime(year, week int) time.Time {
 	return t.AddDate(0, 0, (week-1)*7)
 }
 
-func getOrderByClauseRaw(sorts []PageSorter) string {
+func getOrderByClauseRaw(sorts []PageSorter) (string, error) {
 	if len(sorts) == 0 {
-		return ""
+		return "", nil
 	}
 	orderClauses := make([]string, len(sorts))
 	for i, sort := range sorts {
@@ -862,9 +896,78 @@ func getOrderByClauseRaw(sorts []PageSorter) string {
 		if strings.TrimSpace(sort.Expr) != "" {
 			field = sort.Expr
 		}
+		if !isSafeIdentifier(field) {
+			return "", fmt.Errorf("invalid sort expression: %s", field)
+		}
 		orderClauses[i] = fmt.Sprintf("%s %s", field, dir)
 	}
-	return "ORDER BY " + strings.Join(orderClauses, ", ")
+	return "ORDER BY " + strings.Join(orderClauses, ", "), nil
+}
+
+func quoteJSONPath(field string) string {
+	return "'$." + strings.ReplaceAll(field, "'", "''") + "'"
+}
+
+func isSafeJSONField(field string) bool {
+	field = strings.TrimSpace(field)
+	if field == "" {
+		return false
+	}
+	for _, r := range field {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') ||
+			(r >= '0' && r <= '9') || r == '_' || r == '.' || r == '-' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func isSafeIdentifier(value string) bool {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return false
+	}
+	for i, r := range value {
+		if i == 0 {
+			if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || r == '_') {
+				return false
+			}
+			continue
+		}
+		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') ||
+			(r >= '0' && r <= '9') || r == '_') {
+			return false
+		}
+	}
+	return true
+}
+
+func isSafeAgg(agg Agg) bool {
+	switch agg {
+	case AggSum, AggAvg, AggMax, AggMin, AggCount, AggTotal:
+		return true
+	default:
+		return false
+	}
+}
+
+func isSafeHaving(expr string) bool {
+	upper := strings.ToUpper(expr)
+	for _, forbidden := range []string{";", "--", "/*", "*/"} {
+		if strings.Contains(upper, forbidden) {
+			return false
+		}
+	}
+	for _, token := range strings.FieldsFunc(upper, func(r rune) bool {
+		return !((r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_')
+	}) {
+		switch token {
+		case "UNION", "SELECT", "INSERT", "UPDATE", "DELETE", "DROP", "PRAGMA", "ATTACH", "ALTER", "CREATE", "VACUUM":
+			return false
+		}
+	}
+	return strings.TrimSpace(expr) != ""
 }
 
 func sanitizeColumnName(name string) string {

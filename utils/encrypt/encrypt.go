@@ -7,15 +7,8 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"strings"
 )
-
-func bytesRepeat(b byte, count int) []byte {
-	result := make([]byte, count)
-	for i := range result {
-		result[i] = b
-	}
-	return result
-}
 
 func Encrypt(text, key string) (string, error) {
 	k, err := base64.StdEncoding.DecodeString(key)
@@ -27,20 +20,16 @@ func Encrypt(text, key string) (string, error) {
 		return "", err
 	}
 
-	pad := aes.BlockSize - len(text)%aes.BlockSize
-	paddedText := append([]byte(text), bytesRepeat(byte(pad), pad)...)
-
-	iv := make([]byte, aes.BlockSize)
-	if _, err := io.ReadFull(rand.Reader, iv); err != nil {
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
 		return "", err
 	}
-
-	ciphertext := make([]byte, len(paddedText))
-	mode := cipher.NewCBCEncrypter(block, iv)
-	mode.CryptBlocks(ciphertext, paddedText)
-
-	cipherWithIV := append(iv, ciphertext...)
-	return base64.StdEncoding.EncodeToString(cipherWithIV), nil
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return "", err
+	}
+	ciphertext := gcm.Seal(nil, nonce, []byte(text), nil)
+	return "gcm:" + base64.StdEncoding.EncodeToString(append(nonce, ciphertext...)), nil
 }
 
 func GenerateKey() string {
@@ -57,6 +46,14 @@ func Decrypt(encodedCipher, key string) (string, error) {
 		return "", err
 	}
 
+	block, err := aes.NewCipher(k)
+	if err != nil {
+		return "", err
+	}
+	if strings.HasPrefix(encodedCipher, "gcm:") {
+		return decryptGCM(encodedCipher[len("gcm:"):], block)
+	}
+
 	cipherWithIV, err := base64.StdEncoding.DecodeString(encodedCipher)
 	if err != nil {
 		return "", err
@@ -68,10 +65,8 @@ func Decrypt(encodedCipher, key string) (string, error) {
 
 	iv := cipherWithIV[:aes.BlockSize]
 	ciphertext := cipherWithIV[aes.BlockSize:]
-
-	block, err := aes.NewCipher(k)
-	if err != nil {
-		return "", err
+	if len(ciphertext) == 0 || len(ciphertext)%aes.BlockSize != 0 {
+		return "", fmt.Errorf("invalid ciphertext length")
 	}
 
 	plaintextPadded := make([]byte, len(ciphertext))
@@ -88,5 +83,25 @@ func Decrypt(encodedCipher, key string) (string, error) {
 		}
 	}
 	plaintext := plaintextPadded[:len(plaintextPadded)-padding]
+	return string(plaintext), nil
+}
+
+func decryptGCM(encodedCipher string, block cipher.Block) (string, error) {
+	cipherWithNonce, err := base64.StdEncoding.DecodeString(encodedCipher)
+	if err != nil {
+		return "", err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+	if len(cipherWithNonce) < gcm.NonceSize()+gcm.Overhead() {
+		return "", fmt.Errorf("ciphertext too short")
+	}
+	nonce := cipherWithNonce[:gcm.NonceSize()]
+	plaintext, err := gcm.Open(nil, nonce, cipherWithNonce[gcm.NonceSize():], nil)
+	if err != nil {
+		return "", fmt.Errorf("ciphertext authentication failed: %w", err)
+	}
 	return string(plaintext), nil
 }
