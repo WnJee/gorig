@@ -18,6 +18,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.uber.org/zap"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -33,6 +34,7 @@ func init() {
 const configName = "mongo"
 
 var qmMDBMap = make(map[string]*qmgo.Client)
+var qmMDBMu sync.RWMutex
 
 type pre string
 
@@ -68,6 +70,8 @@ func UseMongoDbConn(dbname string) *qmgo.Client {
 		return nil
 	}
 	dbname = strings.ToLower(dbname)
+	qmMDBMu.RLock()
+	defer qmMDBMu.RUnlock()
 	if _, ok := qmMDBMap[dbname]; !ok {
 		logger.Logger.Error(fmt.Sprintf(errc.ErrorsNotInitGlobalPointer, configName, dbname))
 		return nil
@@ -150,6 +154,8 @@ func (s *mongoDBService) Migrate(con *Con, tableName string, value ConTable, ind
 }
 
 func (*mongoDBService) End() error {
+	qmMDBMu.Lock()
+	defer qmMDBMu.Unlock()
 	for k, client := range qmMDBMap {
 		if err := client.Close(context.Background()); err != nil {
 			logger.Logger.Error("close mongo.Client failed", zap.Error(err))
@@ -208,7 +214,9 @@ func initMgoDB(dbname ...string) error {
 			return e
 		}
 		db = strings.ToLower(db)
-		qmMDBMap[db] = mgClient
+		qmMDBMu.Lock()
+		qmMDBMap[strings.ToLower(db)] = mgClient
+		qmMDBMu.Unlock()
 	}
 	return nil
 }
@@ -388,6 +396,9 @@ func buildMongoProjection(c *Con) bson.M {
 	if len(c.SelectFields) > 0 {
 		projection := make(map[string]interface{}, len(c.SelectFields))
 		for _, field := range c.SelectFields {
+			if !Check(field) {
+				continue
+			}
 			projection[field] = 1
 		}
 		return mapToBsonM(projection)
@@ -395,6 +406,9 @@ func buildMongoProjection(c *Con) bson.M {
 	if len(c.OmitFields) > 0 {
 		projection := make(map[string]interface{}, len(c.OmitFields))
 		for _, field := range c.OmitFields {
+			if !Check(field) {
+				continue
+			}
 			projection[field] = 0
 		}
 		return mapToBsonM(projection)
@@ -406,6 +420,9 @@ func sortMongoFields(s []*Sort) []string {
 	sortList := make([]string, 0)
 	if s != nil {
 		for _, v := range s {
+			if v == nil || !Check(v.Field) || (v.Prefix != "" && !Check(v.Prefix)) {
+				continue
+			}
 			order := ""
 			if !v.Asc {
 				order = "-"
@@ -429,6 +446,9 @@ func matchMongoCond(matchList []Match) map[string]interface{} {
 	condition := make(map[string]interface{})
 
 	for _, match := range matchList {
+		if !Check(match.Field) {
+			return map[string]interface{}{"con.id": bson.M{"$exists": false}}
+		}
 		// Normalize array helpers to existing operators to avoid duplications
 		if match.Type == MHas {
 			match.Type = MEq
@@ -437,7 +457,7 @@ func matchMongoCond(matchList []Match) map[string]interface{} {
 		}
 		if fieldValue, ok := match.Value.(ValueField); ok {
 			if !fieldValue.Check(mongoKeywords...) {
-				continue
+				return map[string]interface{}{"con.id": bson.M{"$exists": false}}
 			}
 			var operator string
 			switch match.Type {

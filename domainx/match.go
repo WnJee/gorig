@@ -28,14 +28,10 @@ const (
 )
 
 func Check(s string) bool {
-	if s == "" {
-		return false
-	}
-	if strings.Contains(s, " ") {
-		return false
-	}
-	return true
+	return fieldPattern.MatchString(s)
 }
+
+var fieldPattern = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)*$`)
 
 type ValueField string
 
@@ -106,7 +102,7 @@ func (m *Matches) Add(field string, value interface{}, t MatchType, ignore ...bo
 				return m
 			}
 		case float32, float64:
-			if value.(float64) == 0 {
+			if cast.ToFloat64(value) == 0 {
 				return m
 			}
 		case []interface{}:

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"reflect"
 	"sync"
 	"time"
 
@@ -28,7 +29,8 @@ func NewSQLiteCache[T any](cacheType string) (*SQLiteCache[T], error) {
 	dbLock.Lock()
 	defer dbLock.Unlock()
 
-	if val, ok := cacheSqliteIns.Load(cacheType); ok {
+	instanceKey := cacheType + "|" + reflect.TypeOf((*T)(nil)).Elem().String()
+	if val, ok := cacheSqliteIns.Load(instanceKey); ok {
 		if typed, ok := val.(*SQLiteCache[T]); ok {
 			return typed, nil
 		}
@@ -80,7 +82,7 @@ func NewSQLiteCache[T any](cacheType string) (*SQLiteCache[T], error) {
 	}
 
 	ins := &SQLiteCache[T]{db: db}
-	cacheSqliteIns.Store(cacheType, ins)
+	cacheSqliteIns.Store(instanceKey, ins)
 
 	return ins, nil
 }
@@ -102,17 +104,17 @@ func (c *SQLiteCache[T]) Keys() ([]string, error) {
 	}
 	c.lock.RLock()
 	defer c.lock.RUnlock()
-	_, cancel := context.WithTimeout(context.Background(), sqliteTimeOut)
+	ctx, cancel := context.WithTimeout(context.Background(), sqliteTimeOut)
 	defer cancel()
 
-	rows, err := c.db.Query("SELECT key, expiration FROM cache")
+	rows, err := c.db.QueryContext(ctx, "SELECT key, expiration FROM cache")
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
 	var keys []string
-	now := time.Now().Unix()
+	now := time.Now().UnixMilli()
 	for rows.Next() {
 		var key string
 		var expiration int64
@@ -133,16 +135,16 @@ func (c *SQLiteCache[T]) Items() map[string]T {
 	}
 	c.lock.RLock()
 	defer c.lock.RUnlock()
-	_, cancel := context.WithTimeout(context.Background(), sqliteTimeOut)
+	ctx, cancel := context.WithTimeout(context.Background(), sqliteTimeOut)
 	defer cancel()
 
-	rows, err := c.db.Query("SELECT key, value, expiration FROM cache")
+	rows, err := c.db.QueryContext(ctx, "SELECT key, value, expiration FROM cache")
 	if err != nil {
 		return result
 	}
 	defer rows.Close()
 
-	now := time.Now().Unix()
+	now := time.Now().UnixMilli()
 	for rows.Next() {
 		var key string
 		var valueStr string
@@ -168,23 +170,25 @@ func (c *SQLiteCache[T]) Get(key string) (T, error) {
 	}
 
 	c.lock.RLock()
-	defer c.lock.RUnlock()
-	_, cancel := context.WithTimeout(context.Background(), sqliteTimeOut)
+	ctx, cancel := context.WithTimeout(context.Background(), sqliteTimeOut)
 	defer cancel()
 
 	var valueStr string
 	var expiration int64
-	err := c.db.QueryRow("SELECT value, expiration FROM cache WHERE key = ?", key).Scan(&valueStr, &expiration)
+	err := c.db.QueryRowContext(ctx, "SELECT value, expiration FROM cache WHERE key = ?", key).Scan(&valueStr, &expiration)
+	c.lock.RUnlock()
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return zero, nil
+			return zero, ErrCacheMiss
 		}
 		return zero, err
 	}
 
-	if expiration > 0 && time.Now().Unix() > expiration {
-		c.Del(key)
-		return zero, nil
+	if expiration > 0 && time.Now().UnixMilli() > expiration {
+		if err := c.Del(key); err != nil {
+			return zero, err
+		}
+		return zero, ErrCacheMiss
 	}
 
 	err = json.Unmarshal([]byte(valueStr), &zero)
@@ -200,7 +204,7 @@ func (c *SQLiteCache[T]) cleanup() {
 		defer c.lock.Unlock()
 		_, cancel := context.WithTimeout(context.Background(), sqliteTimeOut)
 		defer cancel()
-		now := time.Now().Unix()
+		now := time.Now().UnixMilli()
 		_, err := c.db.Exec("DELETE FROM cache WHERE expiration > 0 AND expiration < ?", now)
 		if err != nil {
 			fmt.Printf("Error cleaning up expired cache entries: %v\n", err)
@@ -220,7 +224,7 @@ func (c *SQLiteCache[T]) Set(key string, value T, expiration time.Duration) erro
 
 	exp := int64(0)
 	if expiration > 0 {
-		exp = time.Now().Add(expiration).Unix()
+		exp = time.Now().Add(expiration).UnixMilli()
 	}
 	b, err := json.Marshal(value)
 	if err != nil {
@@ -261,7 +265,7 @@ func (c *SQLiteCache[T]) Exists(key string) (bool, error) {
 		}
 		return false, err
 	}
-	if expiration > 0 && time.Now().Unix() > expiration {
+	if expiration > 0 && time.Now().UnixMilli() > expiration {
 		return false, nil
 	}
 	return true, nil
@@ -313,7 +317,7 @@ func (c *SQLiteCache[T]) Expire(key string, expiration time.Duration) error {
 
 	exp := int64(0)
 	if expiration > 0 {
-		exp = time.Now().Add(expiration).Unix()
+		exp = time.Now().Add(expiration).UnixMilli()
 	}
 	_, err := c.db.Exec("UPDATE cache SET expiration = ? WHERE key = ?", exp, key)
 	return err

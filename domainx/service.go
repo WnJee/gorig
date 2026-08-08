@@ -4,10 +4,8 @@ import (
 	"context"
 	"fmt"
 	"github.com/jom-io/gorig/apix/load"
-	"github.com/jom-io/gorig/utils/errors"
 	"github.com/jom-io/gorig/utils/sys"
 	"sync"
-	"time"
 )
 
 var service = &serviceInfo{
@@ -22,16 +20,16 @@ func (s *serviceInfo) Start(code, port string) error {
 	var err error
 	s.dbService.Range(func(key, value interface{}) bool {
 		err = value.(DBService).Start()
-		return true
+		return err == nil
 	})
-	go func() {
-		time.Sleep(1 * time.Second)
-		for _, m := range MigrationList {
-			if err = s.Migrate(m); err != nil {
-				sys.Exit(errors.Sys(fmt.Sprintf("Migration failed: %v", err.Error())))
-			}
+	if err != nil {
+		return err
+	}
+	for _, m := range MigrationList {
+		if err = s.Migrate(m); err != nil {
+			return fmt.Errorf("migration failed: %w", err)
 		}
-	}()
+	}
 	return err
 }
 
@@ -39,7 +37,7 @@ func (s *serviceInfo) End(code string, ctx context.Context) error {
 	var err error
 	s.dbService.Range(func(key, value interface{}) bool {
 		err = value.(DBService).End()
-		return true
+		return err == nil
 	})
 	return err
 }
@@ -61,16 +59,11 @@ func (s *serviceInfo) Migrate(m *Migration) error {
 	}
 	tableName := value.TableName()
 	sys.Info(" * AutoMigrate: ", con.GetConType()+" ", tableName)
-	var err error
-	defer func() {
-		if err != nil {
-			sys.Exit(errors.Sys(fmt.Sprintf("AutoMigrate failed: %v", err.Error())))
-		}
-	}()
-	go func() {
-		err = GetDBService(con.GetConType()).Migrate(con, tableName, value, m.Index)
-	}()
-	return nil
+	dbService := GetDBService(con.GetConType())
+	if dbService == nil {
+		return fmt.Errorf("database service not registered: %s", con.GetConType())
+	}
+	return dbService.Migrate(con, tableName, value, m.Index)
 }
 
 type DBService interface {

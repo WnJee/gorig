@@ -2,6 +2,7 @@ package messagex
 
 import (
 	"context"
+	"encoding/json"
 	"github.com/jom-io/gorig/utils/errors"
 	"github.com/jom-io/gorig/utils/logger"
 	"github.com/jom-io/gorig/utils/sys"
@@ -9,7 +10,7 @@ import (
 	"github.com/spf13/cast"
 	"go.uber.org/zap"
 	"reflect"
-	"strings"
+	"sync"
 )
 
 type MessageService struct {
@@ -18,6 +19,7 @@ type MessageService struct {
 }
 
 var brokerTypeMap = map[BrokerType]MessageBroker{}
+var brokerTypeMu sync.Mutex
 
 func GetDef() *MessageService {
 	return get(Local)
@@ -28,6 +30,8 @@ func Ins(brokerType BrokerType) *MessageService {
 }
 
 func get(brokerType BrokerType) *MessageService {
+	brokerTypeMu.Lock()
+	defer brokerTypeMu.Unlock()
 	var broker MessageBroker
 
 	if brokerTypeMap[brokerType] != nil {
@@ -53,13 +57,16 @@ func get(brokerType BrokerType) *MessageService {
 }
 
 func getTopicStr(topic any) string {
+	if topic == nil {
+		return ""
+	}
 	if _, ok := topic.(string); !ok {
 		topicValue := reflect.ValueOf(topic)
 		topicType := topicValue.Type()
 		if topicType.ConvertibleTo(reflect.TypeOf("")) {
 			return topicValue.Convert(reflect.TypeOf("")).Interface().(string)
 		}
-		panic("topic must be string or convertible to string")
+		return ""
 	} else {
 		return topic.(string)
 	}
@@ -119,14 +126,18 @@ func (s *MessageService) Publish(ctx context.Context, topic any, message *Messag
 	if message == nil {
 		message = new(Message)
 	}
-	if topic != MsgStartup && topic != "" {
-		sys.Info(" # Publish Topic: ", topic)
-		logger.Info(ctx, "Publishing message", zap.String("group_id", message.GroupID), zap.String("topic", topic.(string)), zap.Any("content", message.Content))
+	topicStr := getTopicStr(topic)
+	if topicStr == "" {
+		return errors.Verify("topic cannot be empty")
+	}
+	if topicStr != MsgStartup {
+		sys.Info(" # Publish Topic: ", topicStr)
+		logger.Info(ctx, "Publishing message", zap.String("group_id", message.GroupID), zap.String("topic", topicStr))
 	}
 
-	error = Ins(s.BrokerType).Broker.Publish(getTopicStr(topic), message)
+	error = Ins(s.BrokerType).Broker.Publish(topicStr, message)
 	if error != nil {
-		logger.Error(ctx, "Publishing message failed", zap.String("topic", topic.(string)), zap.Error(error))
+		logger.Error(ctx, "Publishing message failed", zap.String("topic", topicStr), zap.Error(error))
 	}
 	return
 }
@@ -173,6 +184,10 @@ func Publish(topic any, message *Message, brokerType ...BrokerType) (error *erro
 
 func PublishWithCtx(ctx context.Context, topic any, message *Message) *errors.Error {
 	topicStr := getTopicStr(topic)
+	if message == nil {
+		message = &Message{}
+	}
+	message.Ctx = ctx
 	return Publish(topicStr, message)
 }
 
@@ -192,69 +207,13 @@ func ToMap(param interface{}) map[string]interface{} {
 	if param == nil {
 		return nil
 	}
-	// Return the parameter if it is already a map
-	if reflect.TypeOf(param).Kind() == reflect.Map {
-		switch v := param.(type) {
-		case map[string]interface{}:
-			return v
-		case map[string]string:
-			res := make(map[string]interface{}, len(v))
-			for key, val := range v {
-				res[key] = val
-			}
-			return res
-		case map[string]float64:
-			res := make(map[string]interface{}, len(v))
-			for key, val := range v {
-				res[key] = val
-			}
-			return res
-		case map[string]int:
-			res := make(map[string]interface{}, len(v))
-			for key, val := range v {
-				res[key] = val
-			}
-			return res
-		case map[string]int64:
-			res := make(map[string]interface{}, len(v))
-			for key, val := range v {
-				res[key] = val
-			}
-			return res
-		case map[string]bool:
-			res := make(map[string]interface{}, len(v))
-			for key, val := range v {
-				res[key] = val
-			}
-			return res
-		default:
-			return nil
-		}
-		//return param.(map[string]interface{})
-	}
-
-	// Get the type and value of the parameter
-	val := reflect.ValueOf(param)
-	typ := reflect.TypeOf(param)
-
-	// Check if the passed interface is a pointer, and if so, get the element it points to
-	if val.Kind() == reflect.Ptr {
-		val = val.Elem()
-		typ = typ.Elem()
-	}
-
-	// Return nil if the parameter is not a struct
-	if val.Kind() != reflect.Struct {
+	data, err := json.Marshal(param)
+	if err != nil {
 		return nil
 	}
 	result := make(map[string]interface{})
-	// Loop through the struct's fields
-	for i := 0; i < val.NumField(); i++ {
-		field := val.Field(i)
-		// Use the type to get the field name and convert it to lowercase
-		name := strings.ToLower(typ.Field(i).Name)
-		// Add the field name and value to the map
-		result[name] = field.Interface()
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil
 	}
 
 	return result

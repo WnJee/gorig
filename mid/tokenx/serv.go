@@ -2,8 +2,10 @@ package tokenx
 
 import (
 	"context"
+	"crypto/rand"
 	"github.com/jom-io/gorig/global/variable"
 	"github.com/jom-io/gorig/utils/errors"
+	"sync"
 )
 
 type GeneratorType int
@@ -19,9 +21,22 @@ const (
 	Redis
 )
 
-const defSigning = "github.com/jom-io/gorig"
-
 const defExpire = 3600 * 24 * 7
+
+var (
+	processSigningKey []byte
+	processKeyOnce    sync.Once
+)
+
+func fallbackSigningKey() []byte {
+	processKeyOnce.Do(func() {
+		processSigningKey = make([]byte, 32)
+		if _, err := rand.Read(processSigningKey); err != nil {
+			panic("tokenx: unable to initialize secure signing key: " + err.Error())
+		}
+	})
+	return processSigningKey
+}
 
 type TokenGenerator interface {
 	Generate(userId string, userInfo map[string]interface{}, expireAt int64) (tokens string, err *errors.Error)
@@ -63,14 +78,14 @@ func getGenerator(generatorType GeneratorType) TokenGenerator {
 	if sign == "" {
 		sign = variable.SysName
 	}
-	if sign == "" {
-		sign = defSigning
-	}
-
 	switch generatorType {
 	case Jwt:
+		key := []byte(sign)
+		if len(key) == 0 {
+			key = fallbackSigningKey()
+		}
 		return &jwtGenerator{
-			SigningKey: []byte(sign),
+			SigningKey: key,
 		}
 	}
 	return nil
@@ -89,5 +104,4 @@ func getManager(managerType ManagerType, generator TokenGenerator) TokenManager 
 			generator: generator,
 		}
 	}
-	return nil
 }

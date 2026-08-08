@@ -2,18 +2,20 @@ package tokenx
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"io"
+	"os"
+	"sync"
+	"time"
+
 	"github.com/jom-io/gorig/global/consts"
 	configure "github.com/jom-io/gorig/utils/cofigure"
 	"github.com/jom-io/gorig/utils/errors"
 	"github.com/jom-io/gorig/utils/logger"
 	"github.com/jom-io/gorig/utils/sys"
-	"github.com/spf13/cast"
-	"io/ioutil"
-	"os"
-	"sync"
-	"time"
+	"go.uber.org/zap"
 )
 
 type tokenInfo struct {
@@ -73,7 +75,7 @@ func loadLocalTokens() {
 	}
 	defer file.Close()
 
-	data, err := ioutil.ReadAll(file)
+	data, err := io.ReadAll(file)
 	if err != nil {
 		logger.Error(nil, fmt.Sprintf("Read tokens file error: %v", err))
 		return
@@ -143,12 +145,17 @@ func saveLocalTokens() {
 		return
 	}
 
-	err = ioutil.WriteFile(localTokensFile, data, 0644)
+	tmpFile := localTokensFile + ".tmp"
+	err = os.WriteFile(tmpFile, data, 0600)
+	if err == nil {
+		err = os.Rename(tmpFile, localTokensFile)
+	}
 	if err != nil {
 		logger.Error(nil, fmt.Sprintf("Write file error:%v", err))
-
-		logger.Info(nil, fmt.Sprintf("Saved tokens:%v", mapData))
+		_ = os.Remove(tmpFile)
+		return
 	}
+	_ = os.Chmod(localTokensFile, 0600)
 }
 
 var tokenLock = sync.Map{}
@@ -208,20 +215,22 @@ func (u *memoryImpl) GetUserID(token string) (string, bool) {
 
 // 根据userInfo获取userType 规则为: userInfo的value拼接 用于token变动后及时失效
 func getUserType(userInfo map[string]interface{}) string {
-	userType := ""
-	for _, v := range userInfo {
-		userType += cast.ToString(v)
+	data, err := json.Marshal(userInfo)
+	if err != nil {
+		return ""
 	}
-	return userType
+	return fmt.Sprintf("%x", sha256.Sum256(data))
 }
 
 func (u *memoryImpl) GenerateAndRecord(ctx context.Context, userId string, userInfo map[string]interface{}, expireAt int64) (token string, err *errors.Error) {
-	logger.Info(ctx, fmt.Sprintf("GenerateAndRecord userId:%s userInfo:%v expireAt:%d", userId, userInfo, expireAt))
-	if expireAt < time.Now().Unix() {
-		expireAt = time.Now().Unix() + int64(configure.GetInt("Jwt.TokenExpireAt", defExpire))
-	}
+	logger.Info(ctx, "GenerateAndRecord", zap.String("user_id", userId))
+	expireAt = normalizeExpireSeconds(expireAt)
 	tokenMap.Range(func(key, value interface{}) bool {
 		userInfoGet := value.(*tokenInfo)
+		if userInfoGet != nil && userInfoGet.ExpiresAt <= time.Now().Unix() {
+			tokenMap.Delete(key)
+			return true
+		}
 		if userInfoGet != nil && userInfoGet.UserID == userId && userInfoGet.UserType == getUserType(userInfo) {
 			token = key.(string)
 			return false
@@ -243,7 +252,7 @@ func (u *memoryImpl) Record(userToken string, userInfo map[string]interface{}) b
 	if customClaims, err := u.generator.Parse(userToken); err == nil {
 		userId := customClaims.UserId
 		//expiresAt := customClaims.ExpiresAt
-		expireAt := time.Now().Unix() + int64(configure.GetInt("Jwt.TokenExpireAt", defExpire))
+		expireAt := customClaims.ExpiresAt
 		tokenMap.Store(userToken, &tokenInfo{UserID: userId, UserType: getUserType(userInfo), ExpiresAt: expireAt})
 		//logger.Info(nil, fmt.Sprintf("Record userToken:%s userId:%s userInfo:%v expireAt:%d", userToken, userId, userInfo, expireAt))
 		return true
@@ -256,30 +265,23 @@ func (u *memoryImpl) Record(userToken string, userInfo map[string]interface{}) b
 func (u *memoryImpl) IsMeetRefresh(token string) bool {
 	// token基本信息是否有效：1.过期时间在允许的过期范围内;2.基本格式正确
 	_, code := u.IsNotExpired(token, int64(configure.GetInt("Jwt.TokenRefreshAllowSec")))
-	switch code {
-	case consts.JwtTokenOK, consts.JwtTokenExpired:
-		return true
-		//if model.CreateUserFactory("").OauthRefreshConditionCheck(customClaims.UserId, token) {
-		//	return true
-		//}
-	}
-	return false
+	return code == consts.JwtTokenOK
 }
 
 func (u *memoryImpl) Refresh(oldToken string, newToken string) (res bool) {
-	if customClaims, err := u.generator.Parse(oldToken); err == nil {
-		customClaims.ExpiresAt = time.Now().Unix() + int64(configure.GetInt("Jwt.TokenRefreshExpireAt", defExpire))
-		userId := customClaims.UserId
-		//expiresAt := customClaims.ExpiresAt
-		//if model.CreateUserFactory("").OauthRefreshToken(userId, expiresAt, oldToken, newToken, clientIp) {
-		//	return newToken, true
-		//}
-		//delete(tokens, oldToken)
-		tokenMap.Delete(oldToken)
-		tokenMap.Store(newToken, &tokenInfo{UserID: userId, UserType: getUserType(customClaims.UserInfo), ExpiresAt: customClaims.ExpiresAt})
-		return true
+	oldClaims, oldErr := u.generator.Parse(oldToken)
+	newClaims, newErr := u.generator.Parse(newToken)
+	if oldErr != nil || newErr != nil || oldClaims.UserId != newClaims.UserId {
+		return false
 	}
-	return false
+	tokenMap.Delete(oldToken)
+	tokenMap.Store(newToken, &tokenInfo{
+		UserID:    newClaims.UserId,
+		UserType:  getUserType(newClaims.UserInfo),
+		ExpiresAt: newClaims.ExpiresAt,
+	})
+	go saveLocalTokens()
+	return true
 }
 
 // IsNotExpired
@@ -298,27 +300,19 @@ func (u *memoryImpl) IsNotExpired(token string, expireAtSec int64) (*CustomClaim
 // IsEffective 判断token是否有效（未过期+数据库用户信息正常）
 func (u *memoryImpl) IsEffective(token string) bool {
 	_, code := u.IsNotExpired(token, 0)
-	if consts.JwtTokenOK == code {
-		////1.首先在redis检测是否存在某个用户对应的有效token，如果存在就直接返回，不再继续查询mysql，否则最后查询mysql逻辑，确保万无一失
-		//if variable.ConfigYml.GetInt("Token.IsCacheToRedis") == 1 {
-		//	tokenRedisFact := token_cache_redis.CreateUsersTokenCacheFactory(customClaims.UserId)
-		//	if tokenRedisFact != nil {
-		//		defer tokenRedisFact.ReleaseRedisConn()
-		//		if tokenRedisFact.TokenCacheIsExists(token) {
-		//			return true
-		//		}
-		//	}
-		//}
-		////2.token符合token本身的规则以后，继续在数据库校验是不是符合本系统其他设置，例如：一个用户默认只允许10个账号同时在线（10个token同时有效）
-		//if model.CreateUserFactory("").OauthCheckTokenIsOk(customClaims.UserId, token) {
-		//	return true
-		//}
+	if consts.JwtTokenOK != code {
+		return false
 	}
-	return false
+	value, ok := tokenMap.Load(token)
+	if !ok {
+		return false
+	}
+	info, ok := value.(*tokenInfo)
+	return ok && info != nil && info.UserID != "" && info.ExpiresAt >= time.Now().Unix()
 }
 
 func (u *memoryImpl) Destroy(token string) {
-	logger.Info(nil, fmt.Sprintf("Destroy token:%s", token))
+	logger.Info(nil, "Destroy token")
 	tokenMap.Delete(token)
 }
 

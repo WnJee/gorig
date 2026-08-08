@@ -1,11 +1,11 @@
 package configure
 
 import (
+	"errors"
 	"fmt"
-	"github.com/jom-io/gorig/utils/errors"
+	gerrors "github.com/jom-io/gorig/utils/errors"
 	"github.com/jom-io/gorig/utils/strs"
 	"github.com/spf13/viper"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -26,10 +26,10 @@ func GetString(key string, def ...string) string {
 	return strs.EMPTY
 }
 
-func MustGetString(key string) (string, *errors.Error) {
+func MustGetString(key string) (string, *gerrors.Error) {
 	val := GetString(key)
 	if len(val) == 0 {
-		return val, errors.Sys("Miss configure: " + key + "! " +
+		return val, gerrors.Sys("Miss configure: " + key + "! " +
 			"This parameter should be set in an environment variable, startup parameter, or configuration file.")
 	}
 	return val, nil
@@ -116,8 +116,8 @@ func init() {
 	viper.SetConfigName(GetString("sys.mode", "local"))
 	viper.SetConfigType("yaml")
 	err := viper.ReadInConfig()
-	if err != nil {
+	var notFound viper.ConfigFileNotFoundError
+	if err != nil && !errors.As(err, &notFound) {
 		fmt.Println("Read configure file fail: ", err)
-		os.Exit(1)
 	}
 }

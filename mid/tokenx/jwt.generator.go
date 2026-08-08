@@ -1,6 +1,7 @@
 package tokenx
 
 import (
+	"fmt"
 	"github.com/dgrijalva/jwt-go"
 	"github.com/jom-io/gorig/global/errc"
 	"github.com/jom-io/gorig/utils/errors"
@@ -12,6 +13,9 @@ type jwtGenerator struct {
 }
 
 func (j *jwtGenerator) Generate(userId string, userInfo map[string]interface{}, expireAt int64) (tokens string, err *errors.Error) {
+	if expireAt <= 0 {
+		expireAt = defExpire
+	}
 	claims := CustomClaims{
 		UserId:   userId,
 		UserInfo: userInfo,
@@ -38,6 +42,9 @@ func (j *jwtGenerator) Parse(token string) (*CustomClaims, *errors.Error) {
 
 func (j *jwtGenerator) ParseToken(tokenString string) (*CustomClaims, *errors.Error) {
 	token, err := jwt.ParseWithClaims(tokenString, &CustomClaims{}, func(token *jwt.Token) (interface{}, error) {
+		if token.Method != jwt.SigningMethodHS256 {
+			return nil, fmt.Errorf("unexpected signing method: %s", token.Method.Alg())
+		}
 		return j.SigningKey, nil
 	})
 	if token == nil {

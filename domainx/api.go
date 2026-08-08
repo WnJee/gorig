@@ -172,6 +172,9 @@ func DeleteByMatch(c *Con, matchList []Match) *errors.Error {
 	if c == nil {
 		return errors.Sys("con not init")
 	}
+	if len(matchList) == 0 {
+		return errors.Sys("delete conditions cannot be empty")
+	}
 
 	dbService := GetDBService(c.GetConType())
 
@@ -328,6 +331,12 @@ func UpdatePart(c *Con, id int64, data map[string]interface{}) *errors.Error {
 	if c == nil {
 		return errors.Sys("con not init")
 	}
+	if id <= 0 {
+		return errors.Sys("update id must be greater than zero")
+	}
+	if err := validateDataFields(data); err != nil {
+		return err
+	}
 
 	dbService := GetDBService(c.GetConType())
 
@@ -343,12 +352,30 @@ func UpdateByMatch(c *Con, matchList []Match, data map[string]interface{}) *erro
 	if c == nil {
 		return errors.Sys("con not init")
 	}
+	if len(matchList) == 0 {
+		return errors.Sys("update conditions cannot be empty")
+	}
+	if err := validateDataFields(data); err != nil {
+		return err
+	}
 
 	dbService := GetDBService(c.GetConType())
 
 	gErr := dbService.UpdateByMatch(c, matchList, data)
 	if gErr != nil {
 		return c.HandleWithErr(gErr)
+	}
+	return nil
+}
+
+func validateDataFields(data map[string]interface{}) *errors.Error {
+	if len(data) == 0 {
+		return errors.Sys("update data cannot be empty")
+	}
+	for field := range data {
+		if !Check(field) {
+			return errors.Sys(fmt.Sprintf("invalid field name: %s", field))
+		}
 	}
 	return nil
 }

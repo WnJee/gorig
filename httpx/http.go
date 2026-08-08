@@ -9,45 +9,68 @@ import (
 	"github.com/jom-io/gorig/utils/errors"
 	"github.com/jom-io/gorig/utils/logger"
 	"github.com/spf13/cast"
+	"go.uber.org/zap"
 	"io"
 	"net/http"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
-var client = &http.Client{}
+var client atomic.Pointer[http.Client]
 var timeOut = 120 * time.Second
 
+func init() {
+	client.Store(&http.Client{Timeout: timeOut})
+}
+
 func getClient() *http.Client {
-	if client == nil {
-		client = &http.Client{
-			Timeout: timeOut,
-		}
+	if current := client.Load(); current != nil {
+		return current
 	}
-	return client
+	defaultClient := &http.Client{Timeout: timeOut}
+	if client.CompareAndSwap(nil, defaultClient) {
+		return defaultClient
+	}
+	return client.Load()
 }
 
 func SetTimeOutTmp(t time.Duration) {
-	client.Timeout = t
+	if t <= 0 {
+		return
+	}
+	current := getClient()
+	temporary := *current
+	temporary.Timeout = t
+	client.Store(&temporary)
 	time.AfterFunc(t, func() {
-		client.Timeout = timeOut
+		client.CompareAndSwap(&temporary, current)
 	})
 }
 
+func buildURL(baseURL string, params map[string]string) (string, *errors.Error) {
+	parsed, err := url.Parse(baseURL)
+	if err != nil {
+		return "", errors.Sys("invalid request URL", err)
+	}
+	values := parsed.Query()
+	for key, value := range params {
+		values.Set(key, value)
+	}
+	parsed.RawQuery = values.Encode()
+	return parsed.String(), nil
+}
+
 func Get(baseURL string, params map[string]string) (resp string, err *errors.Error) {
-	reqURL := baseURL
-	if params != nil {
-		values := url.Values{}
-		for k, v := range params {
-			values.Add(k, v)
-		}
-		reqURL = baseURL + "?" + values.Encode()
+	reqURL, buildErr := buildURL(baseURL, params)
+	if buildErr != nil {
+		return "", buildErr
 	}
 
-	response, httpErr := http.Get(reqURL)
-	if err != nil {
-		return "", errors.Sys(fmt.Sprintf("http.Get error: %v", httpErr.Error()))
+	response, httpErr := getClient().Get(reqURL)
+	if httpErr != nil {
+		return "", errors.Sys("http.Get error", httpErr)
 	}
 	defer response.Body.Close()
 
@@ -60,13 +83,9 @@ func Get(baseURL string, params map[string]string) (resp string, err *errors.Err
 }
 
 func GetHeader(baseURL string, params map[string]string, header map[string]string) (resp string, err *errors.Error) {
-	reqURL := baseURL
-	if params != nil {
-		values := url.Values{}
-		for k, v := range params {
-			values.Add(k, v)
-		}
-		reqURL = baseURL + "?" + values.Encode()
+	reqURL, buildErr := buildURL(baseURL, params)
+	if buildErr != nil {
+		return "", buildErr
 	}
 
 	req, reqErr := http.NewRequest("GET", reqURL, nil)
@@ -112,7 +131,7 @@ func PostForm(baseURL string, params map[string]string) (resp string, err *error
 		values.Add(k, v)
 	}
 
-	response, httpErr := http.PostForm(baseURL, values)
+	response, httpErr := getClient().PostForm(baseURL, values)
 	if httpErr != nil {
 		return "", errors.Sys(fmt.Sprintf("http.PostForm error: %v", httpErr.Error()))
 	}
@@ -131,7 +150,7 @@ func PostJSONResp(baseURL string, params interface{}) (resp string, err *errors.
 	if marshalErr != nil {
 		return "", errors.Sys(fmt.Sprintf("json.Marshal error: %v", marshalErr))
 	}
-	logger.Info(nil, fmt.Sprintf("PostJSONResp: %s, %s", baseURL, jsonData))
+	logger.Info(nil, "PostJSONResp", zap.String("url", baseURL))
 
 	response, httpErr := getClient().Post(baseURL, "application/json", bytes.NewReader(jsonData))
 	if httpErr != nil { // 注意这里的错误检查修正
@@ -230,7 +249,7 @@ func PostXML(baseURL string, params map[string]string) (resp string, err *errors
 	}
 	xmlData += "</xml>"
 
-	response, httpErr := http.Post(baseURL, "application/xml", bytes.NewReader([]byte(xmlData)))
+	response, httpErr := getClient().Post(baseURL, "application/xml", bytes.NewReader([]byte(xmlData)))
 	if httpErr != nil {
 		return "", errors.Sys(fmt.Sprintf("http.Post error: %v", httpErr))
 	}
@@ -261,7 +280,7 @@ func ParseXML[T any](xmlStr string) (*T, *errors.Error) {
 	var result T
 	err := xml.Unmarshal([]byte(xmlStr), &result)
 	if err != nil {
-		panic(err)
+		return nil, errors.Sys("xml.Unmarshal error", err)
 	}
 	return &result, nil
 }
@@ -291,7 +310,7 @@ func FetchImage(url string) (imgData []byte, contentType, imgType string, error 
 		imageType = ".png"
 	}
 
-	response, httpErr := http.Get(url)
+	response, httpErr := getClient().Get(url)
 	if httpErr != nil {
 		return nil, "", imageType, errors.Sys(fmt.Sprintf("http.Get error: %v", httpErr))
 	}

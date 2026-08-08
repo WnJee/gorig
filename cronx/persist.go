@@ -367,9 +367,15 @@ func executePersistTask(ctx context.Context, client *redis.Client, id string) {
 	if err := savePersistTask(ctx, client, task, 0); err != nil {
 		logger.Error(ctx, "save persistent cron running status failed", zap.String("task_id", task.ID), zap.Error(err))
 	}
+	heartbeatCtx, stopHeartbeat := context.WithCancel(ctx)
+	heartbeatDone := make(chan struct{})
+	go renewPersistLease(heartbeatCtx, client, task.ID, heartbeatDone)
 
-	if err := runPersistHandler(ctx, handler, task); err != nil {
-		task.LastError = err.Error()
+	runErr := runPersistHandler(ctx, handler, task)
+	stopHeartbeat()
+	<-heartbeatDone
+	if runErr != nil {
+		task.LastError = runErr.Error()
 		markPersistTaskFailed(ctx, client, task)
 		return
 	}
@@ -382,6 +388,23 @@ func executePersistTask(ctx context.Context, client *redis.Client, id string) {
 	}
 	if err := client.ZRem(ctx, persistProcessingKey, task.ID).Err(); err != nil {
 		logger.Error(ctx, "remove persistent cron processing task failed", zap.String("task_id", task.ID), zap.Error(err))
+	}
+}
+
+func renewPersistLease(ctx context.Context, client *redis.Client, taskID string, done chan<- struct{}) {
+	defer close(done)
+	ticker := time.NewTicker(persistLease / 3)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			leaseUntil := time.Now().Add(persistLease).UnixMilli()
+			if err := client.ZAdd(ctx, persistProcessingKey, &redis.Z{Score: float64(leaseUntil), Member: taskID}).Err(); err != nil && ctx.Err() == nil {
+				logger.Error(ctx, "renew persistent cron lease failed", zap.String("task_id", taskID), zap.Error(err))
+			}
+		}
 	}
 }
 
@@ -413,17 +436,11 @@ func runPersistHandler(ctx context.Context, handler persistRegisteredHandler, ta
 	runCtx, cancel := context.WithTimeout(runCtx, timeout)
 	defer cancel()
 
-	done := make(chan error, 1)
-	go func() {
-		done <- call(runCtx)
-	}()
-
-	select {
-	case err := <-done:
+	err := call(runCtx)
+	if err != nil {
 		return err
-	case <-runCtx.Done():
-		return runCtx.Err()
 	}
+	return runCtx.Err()
 }
 
 func loadPersistTask(ctx context.Context, client *redis.Client, id string) (*persistTask, error) {

@@ -85,7 +85,7 @@ func Running() {
 
 	sys.Success("# System startup successful #")
 
-	quit := make(chan os.Signal)
+	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt)
 	<-quit
 

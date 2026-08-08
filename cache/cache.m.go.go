@@ -89,8 +89,6 @@ func (g *GoCache[T]) Del(key string) error {
 	defer lock.Unlock()
 
 	g.cache.Delete(key)
-	g.locks.Delete(key)
-	g.signals.Delete(key)
 	return nil
 }
 
@@ -160,7 +158,9 @@ func (g *GoCache[T]) BRPop(timeout time.Duration, key string) (T, error) {
 
 			select {
 			case <-signal:
-				// has signal
+				if !timer.Stop() {
+					<-timer.C
+				}
 			case <-timer.C:
 				// timeout
 				return zero, ErrCacheMiss
@@ -192,13 +192,13 @@ func (g *GoCache[T]) Incr(key string) (int64, error) {
 }
 
 func (g *GoCache[T]) Expire(key string, expiration time.Duration) error {
-	lock := g.getLock("expire" + key)
+	lock := g.getLock(key)
 	lock.Lock()
 	defer lock.Unlock()
 
-	val, err := g.Get(key)
-	if err != nil {
-		return err
+	val, found := g.cache.Get(key)
+	if !found {
+		return ErrCacheMiss
 	}
 	g.cache.Set(key, val, expiration)
 	return nil

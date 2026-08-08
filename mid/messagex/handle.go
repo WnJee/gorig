@@ -17,7 +17,7 @@ func HandlePanic(msg *Message) {
 			return
 		}
 		debug.PrintStack()
-		log := fmt.Sprintf("Message execution crash: %s,\nPanic: %v, \ntopic: %s, \ncontent: %v, \nStack: %s", r, msg.Topic, msg.Content, string(debug.Stack()))
+		log := fmt.Sprintf("Message execution crash:\nPanic: %v, \ntopic: %s, \ncontent: %v, \nStack: %s", r, msg.Topic, msg.Content, string(debug.Stack()))
 		logger.DPanic(msg.Ctx, log)
 		go dingding.PanicNotifyDefault(log)
 	}

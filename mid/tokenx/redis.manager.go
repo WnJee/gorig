@@ -180,25 +180,22 @@ func (u *redisImpl) findUserToken(userID, userType string) string {
 
 func (u *redisImpl) Record(userToken string, userInfo map[string]interface{}) bool {
 	if customClaims, err := u.generator.Parse(userToken); err == nil {
-		expireAt := time.Now().Unix() + int64(configure.GetInt("Jwt.TokenExpireAt", defExpire))
 		return u.storeToken(userToken, &tokenInfo{
 			UserID:    customClaims.UserId,
 			UserType:  getUserType(userInfo),
-			ExpiresAt: expireAt,
+			ExpiresAt: customClaims.ExpiresAt,
 		})
 	}
 	return false
 }
 
 func (u *redisImpl) GenerateAndRecord(ctx context.Context, userID string, userInfo map[string]interface{}, expireAt int64) (token string, err *errors.Error) {
-	logger.Info(ctx, fmt.Sprintf("GenerateAndRecord userId:%s userInfo:%v expireAt:%d", userID, userInfo, expireAt))
+	logger.Info(ctx, "GenerateAndRecord")
 	if !u.ready() {
 		return "", errors.Sys("redis token manager is not initialized")
 	}
 
-	if expireAt < time.Now().Unix() {
-		expireAt = time.Now().Unix() + int64(configure.GetInt("Jwt.TokenExpireAt", defExpire))
-	}
+	expireAt = normalizeExpireSeconds(expireAt)
 
 	if token = u.findUserToken(userID, getUserType(userInfo)); token != "" {
 		return token, nil
@@ -225,11 +222,7 @@ func (u *redisImpl) IsNotExpired(token string, expireAtSec int64) (*CustomClaims
 
 func (u *redisImpl) IsMeetRefresh(token string) bool {
 	_, code := u.IsNotExpired(token, int64(configure.GetInt("Jwt.TokenRefreshAllowSec")))
-	switch code {
-	case consts.JwtTokenOK, consts.JwtTokenExpired:
-		return true
-	}
-	return false
+	return code == consts.JwtTokenOK
 }
 
 func (u *redisImpl) Refresh(oldToken string, newToken string) bool {
@@ -241,6 +234,10 @@ func (u *redisImpl) Refresh(oldToken string, newToken string) bool {
 	if err != nil {
 		return false
 	}
+	newClaims, newErr := u.generator.Parse(newToken)
+	if newErr != nil || newClaims.UserId != customClaims.UserId {
+		return false
+	}
 
 	info, ok := u.getTokenInfo(oldToken)
 	if !ok {
@@ -249,7 +246,8 @@ func (u *redisImpl) Refresh(oldToken string, newToken string) bool {
 			UserType: getUserType(customClaims.UserInfo),
 		}
 	}
-	info.ExpiresAt = time.Now().Unix() + int64(configure.GetInt("Jwt.TokenRefreshExpireAt", defExpire))
+	info.ExpiresAt = newClaims.ExpiresAt
+	info.UserType = getUserType(newClaims.UserInfo)
 	info.LastRefresh = time.Now().Unix()
 
 	u.removeToken(oldToken, info)
@@ -266,7 +264,7 @@ func (u *redisImpl) IsEffective(token string) bool {
 }
 
 func (u *redisImpl) Destroy(token string) {
-	logger.Info(nil, fmt.Sprintf("Destroy token:%s", token))
+	logger.Info(nil, "Destroy token")
 	u.removeToken(token, nil)
 }
 

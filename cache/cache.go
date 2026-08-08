@@ -40,11 +40,15 @@ func New[T any](t Type, args ...any) Cache[T] {
 	switch t {
 	case Memory:
 		var defaultExpiration, cleanupInterval = time.Minute, time.Minute
-		if len(args) == 1 {
-			defaultExpiration = args[0].(time.Duration)
-		} else if len(args) == 2 {
-			defaultExpiration = args[0].(time.Duration)
-			cleanupInterval = args[1].(time.Duration)
+		if len(args) >= 1 {
+			if value, ok := args[0].(time.Duration); ok {
+				defaultExpiration = value
+			}
+		}
+		if len(args) >= 2 {
+			if value, ok := args[1].(time.Duration); ok {
+				cleanupInterval = value
+			}
 		}
 		return NewGoCache[T](defaultExpiration, cleanupInterval)
 	case Redis:
@@ -53,7 +57,12 @@ func New[T any](t Type, args ...any) Cache[T] {
 		if len(args) < 1 {
 			args = append(args, filepath.Base(fmt.Sprintf("%T", new(T))))
 		}
-		cache, err := NewJSONCache[T](args[0].(string))
+		cacheType, ok := args[0].(string)
+		if !ok || cacheType == "" {
+			logger.Error(nil, "JSON cache name must be a non-empty string")
+			return nil
+		}
+		cache, err := NewJSONCache[T](cacheType)
 		if err != nil {
 			logger.Error(nil, fmt.Sprintf("Failed to create JSON cache: %v", err))
 		}
@@ -62,7 +71,12 @@ func New[T any](t Type, args ...any) Cache[T] {
 		if len(args) < 1 {
 			args = append(args, filepath.Base(fmt.Sprintf("%T", new(T))))
 		}
-		cache, err := NewSQLiteCache[T](args[0].(string))
+		cacheType, ok := args[0].(string)
+		if !ok || cacheType == "" {
+			logger.Error(nil, "SQLite cache name must be a non-empty string")
+			return nil
+		}
+		cache, err := NewSQLiteCache[T](cacheType)
 		if err != nil {
 			logger.Error(nil, fmt.Sprintf("Failed to create SQLite cache: %v", err))
 		}
@@ -106,6 +120,9 @@ func (c *Tool[T]) Get(key string, expiration time.Duration) (T, error) {
 
 		// Search each cache level in order
 		for i, cacheLayer := range c.caches {
+			if cacheLayer == nil || !cacheLayer.IsInitialized() {
+				continue
+			}
 			val, err := cacheLayer.Get(key)
 			if err == nil {
 				logger.Info(c.Ctx, fmt.Sprintf("Cache hit in layer %d", i+1))
@@ -118,6 +135,9 @@ func (c *Tool[T]) Get(key string, expiration time.Duration) (T, error) {
 					}
 				}
 				return value, nil
+			}
+			if !errors.Is(err, ErrCacheMiss) {
+				return zero, err
 			}
 		}
 
@@ -136,7 +156,12 @@ func (c *Tool[T]) Get(key string, expiration time.Duration) (T, error) {
 
 		// Store data in all cache levels
 		for _, cacheLayer := range c.caches {
-			cacheLayer.Set(key, value, expiration)
+			if cacheLayer == nil || !cacheLayer.IsInitialized() {
+				continue
+			}
+			if err := cacheLayer.Set(key, value, expiration); err != nil {
+				return zero, err
+			}
 		}
 
 		return value, nil

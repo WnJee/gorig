@@ -32,6 +32,8 @@ type subscription struct {
 	dlqTopic   string
 	retryItv   []time.Duration
 	handler    func(message *Message) *errors.Error
+	done       chan struct{}
+	stopOnce   sync.Once
 }
 
 type store[T any] interface {
@@ -80,7 +82,7 @@ type SimpleMessageBroker struct {
 	store       store[*Message]
 	nextID      uint64
 	topicOnce   sync.Map
-	topicLock   sync.Mutex
+	topicLock   sync.RWMutex
 	stopCtxs    sync.Map
 }
 
@@ -126,7 +128,7 @@ func (mb *SimpleMessageBroker) StartStoreListener(topic string) {
 					if msg.GroupID != "" {
 						msg.Ctx = context.WithValue(context.Background(), consts.TraceIDKey, msg.GroupID)
 					}
-					mb.publish(topic, "", msg)
+					mb.publish(topic, msg.TargetGroup, msg)
 				}
 			}
 		}()
@@ -159,6 +161,12 @@ func (mb *SimpleMessageBroker) SubscribeSeq(topic string, handler func(message *
 }
 
 func (mb *SimpleMessageBroker) subscribe(topic string, groupID string, handler func(message *Message) *errors.Error, sequential bool, opts []SeqOption) (uint64, *errors.Error) {
+	if topic == "" {
+		return 0, errors.Verify("topic cannot be empty")
+	}
+	if handler == nil {
+		return 0, errors.Verify("message handler cannot be nil")
+	}
 	mb.topicLock.Lock()
 	defer mb.topicLock.Unlock()
 
@@ -192,6 +200,7 @@ func (mb *SimpleMessageBroker) subscribe(topic string, groupID string, handler f
 		dlqTopic:   cfg.dlqTopic,
 		retryItv:   cfg.retryItv,
 		handler:    handler,
+		done:       make(chan struct{}),
 	}
 
 	if value, ok := mb.subscribers.Load(topic); ok {
@@ -204,13 +213,18 @@ func (mb *SimpleMessageBroker) subscribe(topic string, groupID string, handler f
 	if sequential {
 		go mb.listenSequential(sub)
 	} else {
-		go mb.listen(sub)
+		const workerCount = 4
+		for i := 0; i < workerCount; i++ {
+			go mb.listen(sub)
+		}
 	}
 
 	return newID, nil
 }
 
 func (mb *SimpleMessageBroker) UnSubscribe(topic string, subID uint64) *errors.Error {
+	mb.topicLock.Lock()
+	defer mb.topicLock.Unlock()
 	value, ok := mb.subscribers.Load(topic)
 	if !ok {
 		return errors.Sys("topic not found")
@@ -219,7 +233,7 @@ func (mb *SimpleMessageBroker) UnSubscribe(topic string, subID uint64) *errors.E
 	subs := value.([]*subscription)
 	for i, sub := range subs {
 		if sub.id == subID {
-			close(sub.ch)
+			sub.stopOnce.Do(func() { close(sub.done) })
 			subs = append(subs[:i], subs[i+1:]...)
 			if len(subs) == 0 {
 				mb.subscribers.Delete(topic)
@@ -248,12 +262,18 @@ func (mb *SimpleMessageBroker) Publish(topic string, message *Message) *errors.E
 }
 
 func (mb *SimpleMessageBroker) publish(topic string, groupID string, message *Message) {
+	if message == nil {
+		return
+	}
+	mb.topicLock.RLock()
 	value, ok := mb.subscribers.Load(topic)
 	if !ok {
+		mb.topicLock.RUnlock()
 		return
 	}
 
-	subs := value.([]*subscription)
+	subs := append([]*subscription(nil), value.([]*subscription)...)
+	mb.topicLock.RUnlock()
 	seqSubs := make([]*subscription, 0)
 	asyncSubs := make([]*subscription, 0)
 	for _, sub := range subs {
@@ -269,7 +289,10 @@ func (mb *SimpleMessageBroker) publish(topic string, groupID string, message *Me
 
 	// 顺序订阅同步发送，保证发布顺序
 	for _, sub := range seqSubs {
-		sub.ch <- message
+		select {
+		case sub.ch <- message.DeepCopy():
+		case <-sub.done:
+		}
 	}
 
 	// 异步订阅保持原有非阻塞语义
@@ -282,7 +305,8 @@ func (mb *SimpleMessageBroker) publish(topic string, groupID string, message *Me
 			}()
 			for _, sub := range asyncSubs {
 				select {
-				case sub.ch <- message:
+				case sub.ch <- message.DeepCopy():
+				case <-sub.done:
 				default:
 					logger.Error(nil, fmt.Sprintf("topic %s message queue full", topic), zap.Any("message", message))
 				}
@@ -292,7 +316,12 @@ func (mb *SimpleMessageBroker) publish(topic string, groupID string, message *Me
 }
 
 func (mb *SimpleMessageBroker) PublishGroup(topic string, groupID string, message *Message) *errors.Error {
+	if topic == "" || message == nil {
+		return errors.Verify("topic and message are required")
+	}
 	if mb.store != nil {
+		message = message.DeepCopy()
+		message.TargetGroup = groupID
 		if err := mb.store.RPush(topic, message); err != nil {
 			logger.Error(nil, "store RPush error", zap.String("topic", topic), zap.Error(err))
 			return errors.Sys(fmt.Sprintf("store RPush error for topic %s: %v", topic, err))
@@ -304,25 +333,38 @@ func (mb *SimpleMessageBroker) PublishGroup(topic string, groupID string, messag
 }
 
 func (mb *SimpleMessageBroker) listen(sub *subscription) {
-	for message := range sub.ch {
-		go func(msg *Message) {
-			defer HandlePanic(msg)
-			if msg.Ctx == nil {
-				msg.Ctx = context.Background()
+	for {
+		select {
+		case <-sub.done:
+			return
+		case message := <-sub.ch:
+			if message == nil {
+				continue
 			}
-			if msg.GroupID != "" {
-				msg.Ctx = context.WithValue(msg.Ctx, consts.TraceIDKey, msg.GroupID)
-			}
-			if err := sub.handler(msg); err != nil {
-				HandleError(msg, err)
-				//logger.Error(message.Ctx, "Error processing message", zap.Error(err))
-			}
-		}(message)
+			func(msg *Message) {
+				defer HandlePanic(msg)
+				if msg.Ctx == nil {
+					msg.Ctx = context.Background()
+				}
+				if msg.GroupID != "" {
+					msg.Ctx = context.WithValue(msg.Ctx, consts.TraceIDKey, msg.GroupID)
+				}
+				if err := sub.handler(msg); err != nil {
+					HandleError(msg, err)
+				}
+			}(message)
+		}
 	}
 }
 
 func (mb *SimpleMessageBroker) listenSequential(sub *subscription) {
-	for message := range sub.ch {
+	for {
+		var message *Message
+		select {
+		case <-sub.done:
+			return
+		case message = <-sub.ch:
+		}
 		if message == nil {
 			continue
 		}
@@ -407,7 +449,10 @@ func (mb *SimpleMessageBroker) requeue(sub *subscription, msg *Message, delay ti
 		if delay > 0 {
 			time.Sleep(delay)
 		}
-		sub.ch <- msg
+		select {
+		case sub.ch <- msg:
+		case <-sub.done:
+		}
 	}()
 }
 

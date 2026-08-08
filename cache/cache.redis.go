@@ -49,6 +49,7 @@ func initRedisCache() *redis.Client {
 	db := configure.GetString("redis.db")
 	if addr == "" {
 		sys.Info("# Redis addr is empty, skipping initialization")
+		return nil
 	}
 
 	cache, err := newRedisCache(RedisConfig{
@@ -178,7 +179,19 @@ func (r *RedisCache[T]) Keys() ([]string, error) {
 	if !r.IsInitialized() {
 		return nil, fmt.Errorf("redis client is nil")
 	}
-	return r.Client.Keys(r.Ctx, "*").Result()
+	var keys []string
+	var cursor uint64
+	for {
+		batch, next, err := r.Client.Scan(r.Ctx, cursor, "*", 500).Result()
+		if err != nil {
+			return nil, err
+		}
+		keys = append(keys, batch...)
+		cursor = next
+		if cursor == 0 {
+			return keys, nil
+		}
+	}
 }
 
 func (r *RedisCache[T]) Items() map[string]T {

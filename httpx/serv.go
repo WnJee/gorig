@@ -8,23 +8,28 @@ import (
 	"github.com/jom-io/gorig/apix/response"
 	_ "github.com/jom-io/gorig/domainx"
 	"github.com/jom-io/gorig/global/consts"
-	"github.com/jom-io/gorig/utils/errors"
 	"github.com/jom-io/gorig/utils/sys"
+	"net"
 	"net/http"
+	"sync"
 	"time"
 )
 
 func IsRegistered() bool {
+	serverMu.Lock()
+	defer serverMu.Unlock()
 	return gHttpServer != nil
 }
 
 func Startup(code, port string) error {
+	serverMu.Lock()
+	defer serverMu.Unlock()
 	if gHttpServer != nil {
 		sys.Info(" * Rest service already started")
 		return nil
 		//sys.Exit(errors.Sys("You should not start the rest service twice"))
 	}
-	gHttpServer = &http.Server{
+	server := &http.Server{
 		Addr:              port,
 		Handler:           gEngine,
 		ReadTimeout:       10 * time.Second,
@@ -32,13 +37,16 @@ func Startup(code, port string) error {
 		WriteTimeout:      120 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}
-	sys.Info(" * Rest service startup on: ", gHttpServer.Addr)
+	listener, err := net.Listen("tcp", port)
+	if err != nil {
+		return fmt.Errorf("listen on %s: %w", port, err)
+	}
+	gHttpServer = server
+	sys.Info(" * Rest service startup on: ", server.Addr)
 	go func() {
-		err := gHttpServer.ListenAndServe()
+		err := server.Serve(listener)
 		if err != nil && err != http.ErrServerClosed {
-			sys.Error(" * rest service listen failed")
-			sys.Exit(errors.Sys(err.Error()))
-			return
+			sys.Error(" * rest service failed: ", err.Error())
 		}
 	}()
 
@@ -46,12 +54,23 @@ func Startup(code, port string) error {
 }
 
 func Shutdown(code string, ctx context.Context) error {
-	if err := gHttpServer.Shutdown(ctx); err != nil {
+	serverMu.Lock()
+	server := gHttpServer
+	serverMu.Unlock()
+	if server == nil {
+		return nil
+	}
+	if err := server.Shutdown(ctx); err != nil {
 		sys.Error(" * Rest service shutdown error: ", err.Error())
 		return err
 	}
 
-	sys.Error(" * Rest service exist: ", gHttpServer.Addr)
+	serverMu.Lock()
+	if gHttpServer == server {
+		gHttpServer = nil
+	}
+	serverMu.Unlock()
+	sys.Info(" * Rest service stopped: ", server.Addr)
 	return nil
 }
 
@@ -70,6 +89,7 @@ func RegisterRouterMid(group func(groupRouter *gin.RouterGroup, mid ...gin.Handl
 
 var gEngine = gin.New()
 var gHttpServer *http.Server
+var serverMu sync.Mutex
 
 func init() {
 	if !sys.RunMode.IsRd() {
@@ -84,7 +104,7 @@ func init() {
 	//gEngine.Use(SignVerify())
 	RegisterRouter(func(groupRouter *gin.RouterGroup) {
 		groupRouter.GET("ping", func(ctx *gin.Context) {
-			response.Success(ctx, consts.CurdStatusOkMsg, fmt.Sprintf("timestamp %s", time.Now().UnixMilli()))
+			response.Success(ctx, consts.CurdStatusOkMsg, fmt.Sprintf("timestamp %d", time.Now().UnixMilli()))
 		})
 	})
 }

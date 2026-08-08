@@ -13,13 +13,14 @@ import (
 type MessageType string
 
 type Message struct {
-	Ctx     context.Context `json:"-"`
-	ID      string
-	GroupID string
-	SubID   uint64
-	Topic   string
-	Retry   int
-	Content map[string]interface{}
+	Ctx         context.Context `json:"-"`
+	ID          string
+	GroupID     string
+	TargetGroup string `json:"target_group,omitempty"`
+	SubID       uint64
+	Topic       string
+	Retry       int
+	Content     map[string]interface{}
 }
 
 type BrokerType int
@@ -107,22 +108,44 @@ func (m *Message) DeepCopy() *Message {
 	}
 
 	clone := &Message{
-		ID:      xid.New().String(),
-		GroupID: m.GroupID,
-		SubID:   m.SubID,
-		Topic:   m.Topic,
-		Content: nil,
+		ID:          xid.New().String(),
+		GroupID:     m.GroupID,
+		TargetGroup: m.TargetGroup,
+		Ctx:         m.Ctx,
+		SubID:       m.SubID,
+		Topic:       m.Topic,
+		Retry:       m.Retry,
+		Content:     nil,
 	}
 
 	// Deep copy Content map
 	if m.Content != nil {
 		clone.Content = make(map[string]interface{}, len(m.Content))
 		for key, value := range m.Content {
-			clone.Content[key] = value
+			clone.Content[key] = deepCopyValue(value)
 		}
 	}
 
 	return clone
+}
+
+func deepCopyValue(value interface{}) interface{} {
+	switch typed := value.(type) {
+	case map[string]interface{}:
+		result := make(map[string]interface{}, len(typed))
+		for key, item := range typed {
+			result[key] = deepCopyValue(item)
+		}
+		return result
+	case []interface{}:
+		result := make([]interface{}, len(typed))
+		for i, item := range typed {
+			result[i] = deepCopyValue(item)
+		}
+		return result
+	default:
+		return value
+	}
 }
 
 func (m *Message) LowerContentKey() {

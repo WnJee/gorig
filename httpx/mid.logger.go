@@ -6,6 +6,8 @@ import (
 	"github.com/jom-io/gorig/global/consts"
 	"github.com/jom-io/gorig/utils/logger"
 	"go.uber.org/zap"
+	"net/http"
+	"strings"
 )
 
 var restLogger = logger.GetLogger("rest")
@@ -26,11 +28,34 @@ func doGetArrForIn(c *gin.Context) []zap.Field {
 	return []zap.Field{
 		zap.String(consts.TraceIDKey, apix.GetTraceID(c)),
 		zap.String("method", c.Request.Method),
-		zap.String("uri", c.Request.RequestURI),
+		zap.String("path", c.Request.URL.Path),
 		zap.String("remoteAddr", c.Request.RemoteAddr),
-		zap.Any("header", c.Request.Header),
-		zap.Any("query", c.Request.URL.Query()),
+		zap.Any("header", sanitizedHeaders(c.Request.Header)),
+		zap.Any("query", sanitizedQuery(c.Request.URL.Query())),
 	}
+}
+
+func sanitizedHeaders(input http.Header) http.Header {
+	result := input.Clone()
+	for _, key := range []string{"Authorization", "Cookie", "Set-Cookie", "X-Api-Key"} {
+		if result.Get(key) != "" {
+			result.Set(key, "[REDACTED]")
+		}
+	}
+	return result
+}
+
+func sanitizedQuery(input map[string][]string) map[string][]string {
+	result := make(map[string][]string, len(input))
+	for key, value := range input {
+		lower := strings.ToLower(key)
+		if strings.Contains(lower, "token") || strings.Contains(lower, "secret") || strings.Contains(lower, "password") || strings.Contains(lower, "key") {
+			result[key] = []string{"[REDACTED]"}
+			continue
+		}
+		result[key] = append([]string(nil), value...)
+	}
+	return result
 }
 
 func doGetArrForOut(c *gin.Context) []zap.Field {

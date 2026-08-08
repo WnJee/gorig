@@ -2,7 +2,6 @@ package cache
 
 import (
 	"context"
-	"reflect"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -11,6 +10,7 @@ import (
 	"github.com/jom-io/gorig/utils/logger"
 	_ "modernc.org/sqlite"
 	"os"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -874,8 +874,6 @@ func sanitizeColumnName(name string) string {
 	name = strings.ReplaceAll(name, "'", "")
 	return strings.ReplaceAll(name, ".", "_")
 }
-
-
 func jsonKeyFromField(f reflect.StructField) string {
 	if tag, ok := f.Tag.Lookup("json"); ok {
 		if tag == "-" {

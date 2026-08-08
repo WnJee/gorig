@@ -9,9 +9,9 @@ import (
 	"github.com/jom-io/gorig/utils/gormt"
 	"github.com/jom-io/gorig/utils/logger"
 	"github.com/jom-io/gorig/utils/sys"
-	"go.uber.org/zap"
 	"gorm.io/gorm"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -25,6 +25,7 @@ func init() {
 }
 
 var gormDbMysqlMap = make(map[string]*gorm.DB)
+var gormDbMysqlMu sync.RWMutex
 
 func UseDbConn(dbname string) *gorm.DB {
 	if dbname == "" {
@@ -32,6 +33,8 @@ func UseDbConn(dbname string) *gorm.DB {
 		return nil
 	}
 	dbname = strings.ToLower(dbname)
+	gormDbMysqlMu.RLock()
+	defer gormDbMysqlMu.RUnlock()
 	if _, ok := gormDbMysqlMap[dbname]; !ok {
 		logger.Logger.Error(fmt.Sprintf(errc.ErrorsNotInitGlobalPointer, Mysql, dbname))
 		return nil
@@ -59,7 +62,7 @@ func (*gormDBService) Migrate(con *Con, tableName string, value ConTable, indexL
 	}
 	if err := con.MysqlDB.Table(tableName).AutoMigrate(value); err != nil {
 		sys.Error("AutoMigrate error", err)
-		logger.Logger.Fatal("AutoMigrate error", zap.Error(err))
+		return err
 	}
 	for _, v := range indexList {
 		var count int64
@@ -75,7 +78,9 @@ func (*gormDBService) Migrate(con *Con, tableName string, value ConTable, indexL
 			} else {
 				sql = strings.Replace(sql, "IDXTYPE%", " INDEX", -1)
 			}
-			con.MysqlDB.Exec(sql)
+			if err := con.MysqlDB.Exec(sql).Error; err != nil {
+				return err
+			}
 		}
 	}
 
@@ -83,7 +88,12 @@ func (*gormDBService) Migrate(con *Con, tableName string, value ConTable, indexL
 }
 
 func (*gormDBService) End() error {
+	gormDbMysqlMu.Lock()
+	defer gormDbMysqlMu.Unlock()
 	for k, _ := range gormDbMysqlMap {
+		if sqlDB, err := gormDbMysqlMap[k].DB(); err == nil {
+			_ = sqlDB.Close()
+		}
 		delete(gormDbMysqlMap, k)
 	}
 	sys.Info(" * Gorm service shutdown on: ", Mysql)
@@ -96,7 +106,9 @@ func initMysqlDB(dbname ...string) {
 			if dbMysql, err := gormt.GetOneMysqlClient(v); err != nil {
 				logger.Logger.Fatal(fmt.Sprintf("Mysql."+v+" init fail: %s", err.Error()))
 			} else {
-				gormDbMysqlMap[v] = dbMysql
+				gormDbMysqlMu.Lock()
+				gormDbMysqlMap[strings.ToLower(v)] = dbMysql
+				gormDbMysqlMu.Unlock()
 			}
 		}
 	}
@@ -195,6 +207,10 @@ var mysqlKeywords = []string{
 func matchMysqlCond(matchList []Match, tx *gorm.DB) (*gorm.DB, *NearMatch) {
 	var nearMatch *NearMatch
 	for _, match := range matchList {
+		if !Check(match.Field) {
+			tx.AddError(fmt.Errorf("invalid field name: %s", match.Field))
+			continue
+		}
 		if v, ok := match.Value.(ValueField); ok && !v.Check(mysqlKeywords...) {
 			continue
 		}
@@ -263,6 +279,10 @@ func matchMysqlCond(matchList []Match, tx *gorm.DB) (*gorm.DB, *NearMatch) {
 			continue
 		case Near:
 			near := match.ToNearMatch()
+			if !Check(near.LatField) || !Check(near.LngField) {
+				tx.AddError(fmt.Errorf("invalid near field name"))
+				continue
+			}
 			if near.Distance > 0 {
 				tx = tx.Where(mysqlNearExpr(near)+" < ?", near.Lat, near.Lng, near.Lat, near.Distance)
 			}
@@ -291,6 +311,10 @@ func mysqlNearExpr(near NearMatch) string {
 func sortMysqlCond(sortList Sorts, tx *gorm.DB) {
 	if len(sortList) > 0 {
 		for _, v := range sortList {
+			if v == nil || !Check(v.Field) {
+				tx.AddError(fmt.Errorf("invalid sort field name"))
+				continue
+			}
 			desc := ""
 			if !v.Asc {
 				desc = " desc"
@@ -306,6 +330,18 @@ func applyMysqlFields(tx *gorm.DB, c *Con, near *NearMatch) *gorm.DB {
 	}
 
 	selectFields := append([]string{}, c.SelectFields...)
+	for _, field := range selectFields {
+		if field != "*" && !Check(field) {
+			tx.AddError(fmt.Errorf("invalid select field name: %s", field))
+			return tx
+		}
+	}
+	for _, field := range c.OmitFields {
+		if !Check(field) {
+			tx.AddError(fmt.Errorf("invalid omit field name: %s", field))
+			return tx
+		}
+	}
 	if near != nil {
 		if len(selectFields) == 0 {
 			selectFields = append(selectFields, "*")

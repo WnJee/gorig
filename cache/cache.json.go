@@ -58,18 +58,26 @@ func (c *JSONFileCache[T]) loadFromFile() error {
 }
 
 func (c *JSONFileCache[T]) saveToFile() error {
-	file, err := os.Create(c.filePath)
+	tmpPath := c.filePath + ".tmp"
+	file, err := os.OpenFile(tmpPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
 	if err != nil {
 		return err
 	}
-	defer file.Close()
-
 	encoder := json.NewEncoder(file)
-	return encoder.Encode(c.data)
+	if err := encoder.Encode(c.data); err != nil {
+		_ = file.Close()
+		_ = os.Remove(tmpPath)
+		return err
+	}
+	if err := file.Close(); err != nil {
+		_ = os.Remove(tmpPath)
+		return err
+	}
+	return os.Rename(tmpPath, c.filePath)
 }
 
 func (c *JSONFileCache[T]) cleanup() {
-	now := time.Now().Unix()
+	now := time.Now().UnixMilli()
 	for k, v := range c.data {
 		if v.Expiration > 0 && now > v.Expiration {
 			delete(c.data, k)
@@ -82,7 +90,7 @@ func (c *JSONFileCache[T]) Keys() ([]string, error) {
 	defer c.lock.RUnlock()
 
 	var keys []string
-	now := time.Now().Unix()
+	now := time.Now().UnixMilli()
 	for k, v := range c.data {
 		if v.Expiration == 0 || now <= v.Expiration {
 			keys = append(keys, k)
@@ -96,7 +104,7 @@ func (c *JSONFileCache[T]) Items() map[string]T {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 
-	now := time.Now().Unix()
+	now := time.Now().UnixMilli()
 	for k, v := range c.data {
 		if v.Expiration == 0 || now <= v.Expiration {
 			result[k] = v.Value
@@ -111,8 +119,8 @@ func (c *JSONFileCache[T]) Get(key string) (T, error) {
 	defer c.lock.RUnlock()
 
 	item, found := c.data[key]
-	if !found || (item.Expiration > 0 && time.Now().Unix() > item.Expiration) {
-		return zero, nil
+	if !found || (item.Expiration > 0 && time.Now().UnixMilli() > item.Expiration) {
+		return zero, ErrCacheMiss
 	}
 	return item.Value, nil
 }
@@ -123,7 +131,7 @@ func (c *JSONFileCache[T]) Set(key string, value T, expiration time.Duration) er
 
 	exp := int64(0)
 	if expiration > 0 {
-		exp = time.Now().Add(expiration).Unix()
+		exp = time.Now().Add(expiration).UnixMilli()
 	}
 	c.data[key] = jsonCacheItem[T]{Value: value, Expiration: exp}
 	c.cleanup()
@@ -144,7 +152,7 @@ func (c *JSONFileCache[T]) Exists(key string) (bool, error) {
 	defer c.lock.RUnlock()
 
 	item, found := c.data[key]
-	if !found || (item.Expiration > 0 && time.Now().Unix() > item.Expiration) {
+	if !found || (item.Expiration > 0 && time.Now().UnixMilli() > item.Expiration) {
 		return false, nil
 	}
 	return true, nil
@@ -169,7 +177,11 @@ func (c *JSONFileCache[T]) Incr(key string) (int64, error) {
 		}
 	}
 	curr++
-	c.data[key] = jsonCacheItem[T]{Value: any(curr).(T), Expiration: item.Expiration}
+	typed, ok := any(curr).(T)
+	if !ok {
+		return 0, fmt.Errorf("cache type %T does not support Incr", *new(T))
+	}
+	c.data[key] = jsonCacheItem[T]{Value: typed, Expiration: item.Expiration}
 	c.cleanup()
 	return curr, c.saveToFile()
 }
@@ -183,7 +195,7 @@ func (c *JSONFileCache[T]) Expire(key string, expiration time.Duration) error {
 		return ErrCacheMiss
 	}
 	if expiration > 0 {
-		item.Expiration = time.Now().Add(expiration).Unix()
+		item.Expiration = time.Now().Add(expiration).UnixMilli()
 	} else {
 		item.Expiration = 0
 	}
@@ -204,7 +216,7 @@ func (c *JSONFileCache[T]) Flush() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	if err := os.Remove(c.filePath); err != nil {
+	if err := os.Remove(c.filePath); err != nil && !os.IsNotExist(err) {
 		return err
 	}
 	c.data = make(map[string]jsonCacheItem[T])
