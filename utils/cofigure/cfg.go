@@ -2,10 +2,10 @@ package configure
 
 import (
 	"errors"
-	"fmt"
 	gerrors "github.com/jom-io/gorig/utils/errors"
 	"github.com/jom-io/gorig/utils/strs"
 	"github.com/spf13/viper"
+	"log"
 	"strings"
 	"sync"
 	"time"
@@ -83,6 +83,11 @@ func GetDuration(key string, def ...time.Duration) time.Duration {
 // 改为sync.Map
 var gConfigs = sync.Map{}
 
+var (
+	configName  string
+	configPaths = []string{"./_bin/", "./"}
+)
+
 func register(key string, val any) {
 	//gConfigs[key] = val
 	gConfigs.Store(key, val)
@@ -111,13 +116,17 @@ func init() {
 	viper.SetEnvPrefix("gorig")
 	viper.AutomaticEnv()
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
-	viper.AddConfigPath("./_bin/")
-	viper.AddConfigPath("./")
-	viper.SetConfigName(GetString("sys.mode", "local"))
+	for _, path := range configPaths {
+		viper.AddConfigPath(path)
+	}
+	configName = GetString("sys.mode", "local")
+	viper.SetConfigName(configName)
 	viper.SetConfigType("yaml")
-	err := viper.ReadInConfig()
-	var notFound viper.ConfigFileNotFoundError
-	if err != nil && !errors.As(err, &notFound) {
-		fmt.Println("Read configure file fail: ", err)
+	if err := viper.ReadInConfig(); err != nil {
+		var notFound viper.ConfigFileNotFoundError
+		if errors.As(err, &notFound) {
+			log.Fatalf("configuration file is required (name=%q, search paths=%s): %v", configName, strings.Join(configPaths, ", "), err)
+		}
+		log.Fatalf("failed to read configuration file (name=%q): %v", configName, err)
 	}
 }
