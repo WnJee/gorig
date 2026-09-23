@@ -3,7 +3,7 @@ package tokenx
 import (
 	"time"
 
-	configure "github.com/jom-io/gorig/utils/cofigure"
+	configure "github.com/WnJee/gorig/utils/cofigure"
 )
 
 // normalizeExpireSeconds accepts the documented duration in seconds and keeps

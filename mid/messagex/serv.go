@@ -3,9 +3,9 @@ package messagex
 import (
 	"context"
 	"encoding/json"
-	"github.com/jom-io/gorig/utils/errors"
-	"github.com/jom-io/gorig/utils/logger"
-	"github.com/jom-io/gorig/utils/sys"
+	"github.com/WnJee/gorig/utils/errors"
+	"github.com/WnJee/gorig/utils/logger"
+	"github.com/WnJee/gorig/utils/sys"
 	"github.com/rs/xid"
 	"github.com/spf13/cast"
 	"go.uber.org/zap"

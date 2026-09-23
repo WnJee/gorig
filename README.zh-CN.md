@@ -130,7 +130,7 @@ npx gorig-cli@latest skill install codex project
 如果只需要 Go 框架依赖：
 
 ```sh
-go get github.com/jom-io/gorig@latest
+go get github.com/WnJee/gorig@latest
 ```
 
 多数新项目建议从 `gorig-cli` 开始，而不是手动添加包依赖。

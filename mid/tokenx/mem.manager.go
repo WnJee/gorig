@@ -10,11 +10,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/jom-io/gorig/global/consts"
-	configure "github.com/jom-io/gorig/utils/cofigure"
-	"github.com/jom-io/gorig/utils/errors"
-	"github.com/jom-io/gorig/utils/logger"
-	"github.com/jom-io/gorig/utils/sys"
+	"github.com/WnJee/gorig/global/consts"
+	configure "github.com/WnJee/gorig/utils/cofigure"
+	"github.com/WnJee/gorig/utils/errors"
+	"github.com/WnJee/gorig/utils/logger"
+	"github.com/WnJee/gorig/utils/sys"
 	"go.uber.org/zap"
 )
 
@@ -252,7 +252,7 @@ func (u *memoryImpl) Record(userToken string, userInfo map[string]interface{}) b
 	if customClaims, err := u.generator.Parse(userToken); err == nil {
 		userId := customClaims.UserId
 		//expiresAt := customClaims.ExpiresAt
-		expireAt := customClaims.ExpiresAt
+		expireAt := customClaims.ExpiresAtUnix()
 		tokenMap.Store(userToken, &tokenInfo{UserID: userId, UserType: getUserType(userInfo), ExpiresAt: expireAt})
 		//logger.Info(nil, fmt.Sprintf("Record userToken:%s userId:%s userInfo:%v expireAt:%d", userToken, userId, userInfo, expireAt))
 		return true
@@ -278,7 +278,7 @@ func (u *memoryImpl) Refresh(oldToken string, newToken string) (res bool) {
 	tokenMap.Store(newToken, &tokenInfo{
 		UserID:    newClaims.UserId,
 		UserType:  getUserType(newClaims.UserInfo),
-		ExpiresAt: newClaims.ExpiresAt,
+		ExpiresAt: newClaims.ExpiresAtUnix(),
 	})
 	go saveLocalTokens()
 	return true
@@ -287,7 +287,7 @@ func (u *memoryImpl) Refresh(oldToken string, newToken string) (res bool) {
 // IsNotExpired
 func (u *memoryImpl) IsNotExpired(token string, expireAtSec int64) (*CustomClaims, int) {
 	if customClaims, err := u.generator.Parse(token); err == nil {
-		if time.Now().Unix()-(customClaims.ExpiresAt+expireAtSec) < 0 {
+		if time.Now().Unix()-(customClaims.ExpiresAtUnix()+expireAtSec) < 0 {
 			return customClaims, consts.JwtTokenOK
 		} else {
 			return customClaims, consts.JwtTokenExpired

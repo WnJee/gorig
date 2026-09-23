@@ -1,8 +1,8 @@
 package sys
 
 import (
-	configure "github.com/jom-io/gorig/utils/cofigure"
-	"github.com/jom-io/gorig/utils/errors"
+	configure "github.com/WnJee/gorig/utils/cofigure"
+	"github.com/WnJee/gorig/utils/errors"
 	"github.com/rs/xid"
 	"os"
 	"strings"

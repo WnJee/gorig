@@ -3,7 +3,7 @@ package apix
 import (
 	"context"
 	"github.com/gin-gonic/gin"
-	"github.com/jom-io/gorig/global/consts"
+	"github.com/WnJee/gorig/global/consts"
 	"github.com/rs/xid"
 	"net/http"
 	"net/http/httptest"

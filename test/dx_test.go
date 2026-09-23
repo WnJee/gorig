@@ -2,9 +2,9 @@ package test
 
 import (
 	"context"
-	"github.com/jom-io/gorig/domainx"
-	"github.com/jom-io/gorig/domainx/dx"
-	"github.com/jom-io/gorig/serv"
+	"github.com/WnJee/gorig/domainx"
+	"github.com/WnJee/gorig/domainx/dx"
+	"github.com/WnJee/gorig/serv"
 	"github.com/stretchr/testify/assert"
 	"gorm.io/datatypes"
 	"strings"

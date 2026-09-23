@@ -2,7 +2,7 @@ package tokenx
 
 import (
 	"context"
-	"github.com/dgrijalva/jwt-go"
+	"github.com/golang-jwt/jwt/v5"
 	"strings"
 	"testing"
 	"time"
@@ -26,7 +26,7 @@ func TestMemoryTokenExpiryAndEffective(t *testing.T) {
 
 func TestParseTokenRejectsExpiredTokenWithInvalidSignature(t *testing.T) {
 	generator := &jwtGenerator{SigningKey: []byte("test-signing-key")}
-	claims := CustomClaims{StandardClaims: jwt.StandardClaims{ExpiresAt: time.Now().Add(-time.Minute).Unix()}}
+	claims := CustomClaims{RegisteredClaims: jwt.RegisteredClaims{ExpiresAt: jwt.NewNumericDate(time.Now().Add(-time.Minute))}}
 	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(generator.SigningKey)
 	if err != nil {
 		t.Fatal(err)

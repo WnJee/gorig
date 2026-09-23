@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/jom-io/gorig/cronx"
+	"github.com/WnJee/gorig/cronx"
 	"github.com/stretchr/testify/assert"
 	"sync/atomic"
 	"testing"

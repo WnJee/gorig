@@ -3,8 +3,8 @@ package domainx
 import (
 	"context"
 	"fmt"
-	"github.com/jom-io/gorig/apix/load"
-	"github.com/jom-io/gorig/utils/sys"
+	"github.com/WnJee/gorig/apix/load"
+	"github.com/WnJee/gorig/utils/sys"
 	"sync"
 )
 

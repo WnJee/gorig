@@ -1,10 +1,10 @@
 package tokenx
 
 import (
-	"fmt"
-	"github.com/dgrijalva/jwt-go"
-	"github.com/jom-io/gorig/global/errc"
-	"github.com/jom-io/gorig/utils/errors"
+	stderrors "errors"
+	"github.com/WnJee/gorig/global/errc"
+	"github.com/WnJee/gorig/utils/errors"
+	"github.com/golang-jwt/jwt/v5"
 	"time"
 )
 
@@ -16,20 +16,21 @@ func (j *jwtGenerator) Generate(userId string, userInfo map[string]interface{}, 
 	if expireAt <= 0 {
 		expireAt = defExpire
 	}
+	now := time.Now()
 	claims := CustomClaims{
 		UserId:   userId,
 		UserInfo: userInfo,
-		StandardClaims: jwt.StandardClaims{
-			NotBefore: time.Now().Unix() - 10,
-			ExpiresAt: time.Now().Unix() + expireAt,
+		RegisteredClaims: jwt.RegisteredClaims{
+			NotBefore: jwt.NewNumericDate(now.Add(-10 * time.Second)),
+			ExpiresAt: jwt.NewNumericDate(now.Add(time.Duration(expireAt) * time.Second)),
 		},
 	}
-	tokenPartA := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	if signedString, sinErr := tokenPartA.SignedString(j.SigningKey); sinErr == nil {
-		return signedString, nil
-	} else {
-		return "", errors.Sys("jwt sign string error", sinErr)
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	signedString, signErr := token.SignedString(j.SigningKey)
+	if signErr != nil {
+		return "", errors.Sys("jwt sign string error", signErr)
 	}
+	return signedString, nil
 }
 
 func (j *jwtGenerator) Parse(token string) (*CustomClaims, *errors.Error) {
@@ -42,37 +43,50 @@ func (j *jwtGenerator) Parse(token string) (*CustomClaims, *errors.Error) {
 
 func (j *jwtGenerator) ParseToken(tokenString string) (*CustomClaims, *errors.Error) {
 	token, err := jwt.ParseWithClaims(tokenString, &CustomClaims{}, func(token *jwt.Token) (interface{}, error) {
-		if token.Method != jwt.SigningMethodHS256 {
-			return nil, fmt.Errorf("unexpected signing method: %s", token.Method.Alg())
-		}
 		return j.SigningKey, nil
-	})
+	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
 	if token == nil {
 		return nil, errors.Verify(errc.ErrorsTokenInvalid)
 	}
 	if err != nil {
-		ve, ok := err.(*jwt.ValidationError)
-		if !ok {
-			return nil, errors.Verify(errc.ErrorsTokenInvalid)
-		}
-		if ve.Errors&jwt.ValidationErrorMalformed != 0 {
+		switch {
+		case stderrors.Is(err, jwt.ErrTokenMalformed):
 			return nil, errors.Verify(errc.ErrorsTokenMalFormed)
-		}
-		if ve.Errors&jwt.ValidationErrorNotValidYet != 0 {
+		case stderrors.Is(err, jwt.ErrTokenNotValidYet):
 			return nil, errors.Verify(errc.ErrorsTokenNotActiveYet)
-		}
-		// An expired token is intentionally returned so token refresh can inspect
-		// its claims, but only when expiration is the sole validation failure.
-		// In particular, never turn an expired token with a bad signature into a
-		// valid token.
-		if ve.Errors != jwt.ValidationErrorExpired {
+		case isOnlyExpired(err):
+			// An expired token is intentionally returned so token refresh can
+			// inspect its claims, but only when expiration is the sole validation
+			// failure. In particular, never turn an expired token with a bad
+			// signature into a valid token.
+			token.Valid = true
+		default:
 			return nil, errors.Verify(errc.ErrorsTokenInvalid)
 		}
-		token.Valid = true
 	}
 	if claims, ok := token.Claims.(*CustomClaims); ok && token.Valid {
 		return claims, nil
 	} else {
 		return nil, errors.Verify(errc.ErrorsTokenInvalid)
 	}
+}
+
+// isOnlyExpired reports whether the parse failure is exactly token expiry,
+// with no malformed, signature, or validity problem attached.
+func isOnlyExpired(err error) bool {
+	if err == nil {
+		return false
+	}
+	for _, other := range []error{
+		jwt.ErrTokenMalformed,
+		jwt.ErrTokenUnverifiable,
+		jwt.ErrTokenSignatureInvalid,
+		jwt.ErrTokenNotValidYet,
+		jwt.ErrTokenUsedBeforeIssued,
+	} {
+		if stderrors.Is(err, other) {
+			return false
+		}
+	}
+	return stderrors.Is(err, jwt.ErrTokenExpired)
 }

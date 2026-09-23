@@ -3,9 +3,9 @@ package logger
 import (
 	"context"
 	"github.com/gin-gonic/gin"
-	"github.com/jom-io/gorig/global/consts"
-	configure "github.com/jom-io/gorig/utils/cofigure"
-	"github.com/jom-io/gorig/utils/sys"
+	"github.com/WnJee/gorig/global/consts"
+	configure "github.com/WnJee/gorig/utils/cofigure"
+	"github.com/WnJee/gorig/utils/sys"
 	"github.com/rs/xid"
 	"github.com/spf13/cast"
 	"go.uber.org/zap"

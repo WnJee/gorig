@@ -2,7 +2,7 @@ package httpx
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/jom-io/gorig/apix"
+	"github.com/WnJee/gorig/apix"
 )
 
 // Deprecated: Use apix.NewCtx() instead.

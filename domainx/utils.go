@@ -1,7 +1,7 @@
 package domainx
 
 import (
-	"github.com/jom-io/gorig/utils/errors"
+	"github.com/WnJee/gorig/utils/errors"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )

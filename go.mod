@@ -1,4 +1,4 @@
-module github.com/jom-io/gorig
+module github.com/WnJee/gorig
 
 go 1.23.0
 
@@ -7,7 +7,6 @@ toolchain go1.23.4
 //toolchain go1.23.4
 
 require (
-	github.com/dgrijalva/jwt-go v3.2.0+incompatible
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/gin-contrib/gzip v0.0.6
 	github.com/gin-gonic/gin v1.9.1
@@ -30,6 +29,7 @@ require (
 )
 
 require (
+	github.com/golang-jwt/jwt/v5 v5.2.2
 	github.com/robfig/cron/v3 v3.0.0
 	github.com/stretchr/testify v1.10.0
 	modernc.org/sqlite v1.37.0

@@ -3,8 +3,8 @@ package domainx
 import (
 	"context"
 	"fmt"
-	"github.com/jom-io/gorig/global/variable"
-	configure "github.com/jom-io/gorig/utils/cofigure"
+	"github.com/WnJee/gorig/global/variable"
+	configure "github.com/WnJee/gorig/utils/cofigure"
 	"gorm.io/gorm"
 	"time"
 )

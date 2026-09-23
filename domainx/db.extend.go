@@ -2,9 +2,9 @@ package domainx
 
 import (
 	"fmt"
-	"github.com/jom-io/gorig/utils/errors"
-	"github.com/jom-io/gorig/utils/logger"
-	"github.com/jom-io/gorig/utils/sys"
+	"github.com/WnJee/gorig/utils/errors"
+	"github.com/WnJee/gorig/utils/logger"
+	"github.com/WnJee/gorig/utils/sys"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 )

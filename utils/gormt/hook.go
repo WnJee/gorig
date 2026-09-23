@@ -1,8 +1,8 @@
 package gormt
 
 import (
-	"github.com/jom-io/gorig/global/errc"
-	"github.com/jom-io/gorig/utils/logger"
+	"github.com/WnJee/gorig/global/errc"
+	"github.com/WnJee/gorig/utils/logger"
 	"gorm.io/gorm"
 	"reflect"
 	"strings"

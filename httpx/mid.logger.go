@@ -2,9 +2,9 @@ package httpx
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/jom-io/gorig/apix"
-	"github.com/jom-io/gorig/global/consts"
-	"github.com/jom-io/gorig/utils/logger"
+	"github.com/WnJee/gorig/apix"
+	"github.com/WnJee/gorig/global/consts"
+	"github.com/WnJee/gorig/utils/logger"
 	"go.uber.org/zap"
 	"net/http"
 	"strings"

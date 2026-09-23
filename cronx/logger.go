@@ -1,7 +1,7 @@
 package cronx
 
 import (
-	"github.com/jom-io/gorig/utils/logger"
+	"github.com/WnJee/gorig/utils/logger"
 	"go.uber.org/zap"
 )
 

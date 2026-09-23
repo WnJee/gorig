@@ -3,15 +3,16 @@ package serv
 import (
 	"context"
 	"fmt"
-	_ "github.com/jom-io/gorig/cache"
-	configure "github.com/jom-io/gorig/utils/cofigure"
-	"github.com/jom-io/gorig/utils/errors"
-	"github.com/jom-io/gorig/utils/logger"
-	"github.com/jom-io/gorig/utils/sys"
+	_ "github.com/WnJee/gorig/cache"
+	configure "github.com/WnJee/gorig/utils/cofigure"
+	"github.com/WnJee/gorig/utils/errors"
+	"github.com/WnJee/gorig/utils/logger"
+	"github.com/WnJee/gorig/utils/sys"
 	"go.uber.org/zap"
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -22,14 +23,22 @@ type Service struct {
 	Shutdown func(code string, ctx context.Context) error
 }
 
-var gServices map[string]Service
+var (
+	gServicesMu sync.RWMutex
+	gServices   = make(map[string]Service)
+	// gServiceOrder preserves registration order so startup and shutdown are
+	// deterministic. Map iteration order in Go is randomized by design.
+	gServiceOrder []string
+)
 
 func doRegisterService(service Service) *errors.Error {
-	_, exists := gServices[service.Code]
-	if exists {
+	gServicesMu.Lock()
+	defer gServicesMu.Unlock()
+	if _, exists := gServices[service.Code]; exists {
 		return errors.Sys(fmt.Sprintf("The same service has been register.[ code=%s ]", service.Code))
 	}
 	gServices[service.Code] = service
+	gServiceOrder = append(gServiceOrder, service.Code)
 	return nil
 }
 
@@ -47,7 +56,9 @@ func RegisterService(service ...Service) *errors.Error {
 }
 
 func StartCode(code string) *errors.Error {
+	gServicesMu.RLock()
 	service, exists := gServices[code]
+	gServicesMu.RUnlock()
 	if !exists {
 		return errors.Sys(fmt.Sprintf("The service not found.[ code=%s ]", code))
 	}
@@ -62,8 +73,16 @@ func StartCode(code string) *errors.Error {
 }
 
 func Running() {
-	for code, service := range gServices {
-		sys.Warn("# Start the service: ", code, " ...... #")
+	gServicesMu.RLock()
+	order := append([]string(nil), gServiceOrder...)
+	services := make(map[string]Service, len(gServices))
+	for code, s := range gServices {
+		services[code] = s
+	}
+	gServicesMu.RUnlock()
+
+	for _, code := range order {
+		service := services[code]
 		err := service.Startup(code, service.PORT)
 		if err != nil {
 			logger.Logger.Error("start server failed", zap.String("code", code), zap.Error(err))
@@ -92,7 +111,9 @@ func Running() {
 	sys.Info("# Shutting down the system ...... #")
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	for code, service := range gServices {
+	for i := len(order) - 1; i >= 0; i-- {
+		code := order[i]
+		service := services[code]
 		sys.Info(" * Start stop service: ", code, " ......")
 		err := service.Shutdown(code, ctx)
 		if err != nil {
@@ -102,8 +123,4 @@ func Running() {
 		sys.Success(" * Stop service ", code, " [OK]")
 	}
 	sys.Success("# Shutting down the system [OK] #")
-}
-
-func init() {
-	gServices = make(map[string]Service)
 }

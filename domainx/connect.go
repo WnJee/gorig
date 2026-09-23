@@ -2,7 +2,7 @@ package domainx
 
 import (
 	"context"
-	"github.com/jom-io/gorig/utils/errors"
+	"github.com/WnJee/gorig/utils/errors"
 	"github.com/qiniu/qmgo"
 	"gorm.io/gorm"
 	"strings"

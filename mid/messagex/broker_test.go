@@ -1,7 +1,7 @@
 package messagex
 
 import (
-	"github.com/jom-io/gorig/utils/errors"
+	"github.com/WnJee/gorig/utils/errors"
 	"testing"
 )
 

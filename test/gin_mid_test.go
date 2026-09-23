@@ -2,7 +2,7 @@ package test
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/jom-io/gorig/httpx"
+	"github.com/WnJee/gorig/httpx"
 	"net/http"
 	"net/http/httptest"
 	"strings"

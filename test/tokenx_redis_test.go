@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jom-io/gorig/cache"
-	"github.com/jom-io/gorig/mid/tokenx"
+	"github.com/WnJee/gorig/cache"
+	"github.com/WnJee/gorig/mid/tokenx"
 )
 
 func redisTokenServiceOrSkip(t *testing.T) *tokenx.TokenService {

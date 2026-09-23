@@ -3,14 +3,16 @@ package httpx
 import (
 	"context"
 	"fmt"
+	"github.com/WnJee/gorig/apix/response"
+	_ "github.com/WnJee/gorig/domainx"
+	"github.com/WnJee/gorig/global/consts"
+	configure "github.com/WnJee/gorig/utils/cofigure"
+	"github.com/WnJee/gorig/utils/sys"
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
-	"github.com/jom-io/gorig/apix/response"
-	_ "github.com/jom-io/gorig/domainx"
-	"github.com/jom-io/gorig/global/consts"
-	"github.com/jom-io/gorig/utils/sys"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
@@ -97,6 +99,11 @@ func init() {
 	}
 	gEngine.Use(Recovery())
 	gEngine.Use(Logger())
+	allowedOrigins := configureAllowedOrigins()
+	SetAllowedOrigins(allowedOrigins...)
+	if len(allowedOrigins) == 0 {
+		sys.Warn(" * CORS: no allowed origins configured (api.cors.origins); cross-origin browser requests will be rejected")
+	}
 	gEngine.Use(CORS())
 	gEngine.Use(gzip.Gzip(gzip.BestSpeed))
 	gEngine.Use(Debounce(200 * time.Millisecond))
@@ -107,4 +114,20 @@ func init() {
 			response.Success(ctx, consts.CurdStatusOkMsg, fmt.Sprintf("timestamp %d", time.Now().UnixMilli()))
 		})
 	})
+}
+
+// configureAllowedOrigins reads api.cors.origins. It accepts both a YAML list
+// and a single comma-separated string, trimming whitespace around entries.
+func configureAllowedOrigins() []string {
+	raw := configure.GetStringSlice("api.cors.origins")
+	if len(raw) == 1 {
+		raw = strings.Split(raw[0], ",")
+	}
+	origins := make([]string, 0, len(raw))
+	for _, origin := range raw {
+		if origin = strings.TrimSpace(origin); origin != "" {
+			origins = append(origins, origin)
+		}
+	}
+	return origins
 }

@@ -3,8 +3,9 @@ package tokenx
 import (
 	"context"
 	"crypto/rand"
-	"github.com/jom-io/gorig/global/variable"
-	"github.com/jom-io/gorig/utils/errors"
+	"github.com/WnJee/gorig/global/variable"
+	"github.com/WnJee/gorig/utils/errors"
+	"github.com/WnJee/gorig/utils/logger"
 	"sync"
 )
 
@@ -82,6 +83,9 @@ func getGenerator(generatorType GeneratorType) TokenGenerator {
 	case Jwt:
 		key := []byte(sign)
 		if len(key) == 0 {
+			logger.Warn(nil, "tokenx: jwt.key/sys.name not configured; using a random per-process signing key. "+
+				"Tokens will be invalidated on every restart and are not valid across instances. "+
+				"Set jwt.key in the configuration file or GORIG_JWT_KEY environment variable.")
 			key = fallbackSigningKey()
 		}
 		return &jwtGenerator{

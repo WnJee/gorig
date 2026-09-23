@@ -2,8 +2,8 @@ package configure
 
 import (
 	"errors"
-	gerrors "github.com/jom-io/gorig/utils/errors"
-	"github.com/jom-io/gorig/utils/strs"
+	gerrors "github.com/WnJee/gorig/utils/errors"
+	"github.com/WnJee/gorig/utils/strs"
 	"github.com/spf13/viper"
 	"log"
 	"strings"
@@ -77,6 +77,17 @@ func GetDuration(key string, def ...time.Duration) time.Duration {
 		return def[0]
 	}
 	return 0
+}
+
+func GetStringSlice(key string, def ...[]string) []string {
+	ok := exists(key)
+	if ok {
+		return viper.GetStringSlice(key)
+	}
+	if len(def) > 0 {
+		return def[0]
+	}
+	return nil
 }
 
 // var gConfigs = make(map[string]any)

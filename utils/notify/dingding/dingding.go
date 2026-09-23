@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	configure "github.com/jom-io/gorig/utils/cofigure"
+	configure "github.com/WnJee/gorig/utils/cofigure"
 	"net/http"
 	"os"
 )

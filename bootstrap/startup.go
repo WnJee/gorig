@@ -2,13 +2,13 @@ package bootstrap
 
 import (
 	"github.com/gin-gonic/gin"
-	_ "github.com/jom-io/gorig/cache"
-	_ "github.com/jom-io/gorig/domainx"
-	_ "github.com/jom-io/gorig/global/variable"
-	"github.com/jom-io/gorig/httpx"
-	"github.com/jom-io/gorig/serv"
-	configure "github.com/jom-io/gorig/utils/cofigure"
-	"github.com/jom-io/gorig/utils/sys"
+	_ "github.com/WnJee/gorig/cache"
+	_ "github.com/WnJee/gorig/domainx"
+	_ "github.com/WnJee/gorig/global/variable"
+	"github.com/WnJee/gorig/httpx"
+	"github.com/WnJee/gorig/serv"
+	configure "github.com/WnJee/gorig/utils/cofigure"
+	"github.com/WnJee/gorig/utils/sys"
 )
 
 func regWebService() {

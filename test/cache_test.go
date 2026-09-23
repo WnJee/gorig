@@ -2,7 +2,7 @@ package test
 
 import (
 	"database/sql"
-	"github.com/jom-io/gorig/cache"
+	"github.com/WnJee/gorig/cache"
 	"testing"
 	"time"
 )

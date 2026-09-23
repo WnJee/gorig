@@ -2,9 +2,9 @@ package dx
 
 import (
 	"context"
-	"github.com/jom-io/gorig/apix/load"
-	"github.com/jom-io/gorig/domainx"
-	"github.com/jom-io/gorig/utils/errors"
+	"github.com/WnJee/gorig/apix/load"
+	"github.com/WnJee/gorig/domainx"
+	"github.com/WnJee/gorig/utils/errors"
 )
 
 type (

@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/jom-io/gorig/utils/logger"
+	"github.com/WnJee/gorig/utils/logger"
 	"golang.org/x/sync/singleflight"
 	"path/filepath"
 	"sync"

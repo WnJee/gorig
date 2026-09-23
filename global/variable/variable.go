@@ -1,6 +1,6 @@
 package variable
 
-import configure "github.com/jom-io/gorig/utils/cofigure"
+import configure "github.com/WnJee/gorig/utils/cofigure"
 
 var (
 	SysName  = ""

@@ -2,10 +2,10 @@ package test
 
 import (
 	"context"
-	"github.com/jom-io/gorig/cache"
-	"github.com/jom-io/gorig/mid/messagex"
-	"github.com/jom-io/gorig/utils/errors"
-	"github.com/jom-io/gorig/utils/logger"
+	"github.com/WnJee/gorig/cache"
+	"github.com/WnJee/gorig/mid/messagex"
+	"github.com/WnJee/gorig/utils/errors"
+	"github.com/WnJee/gorig/utils/logger"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
 	"sync"

@@ -12,9 +12,9 @@ import (
 	"time"
 
 	"github.com/go-redis/redis/v8"
-	"github.com/jom-io/gorig/cache"
-	"github.com/jom-io/gorig/utils/logger"
-	"github.com/jom-io/gorig/utils/notify/dingding"
+	"github.com/WnJee/gorig/cache"
+	"github.com/WnJee/gorig/utils/logger"
+	"github.com/WnJee/gorig/utils/notify/dingding"
 	"github.com/rs/xid"
 	"go.uber.org/zap"
 )

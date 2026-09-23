@@ -7,11 +7,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/jom-io/gorig/cache"
-	"github.com/jom-io/gorig/global/consts"
-	configure "github.com/jom-io/gorig/utils/cofigure"
-	"github.com/jom-io/gorig/utils/errors"
-	"github.com/jom-io/gorig/utils/logger"
+	"github.com/WnJee/gorig/cache"
+	"github.com/WnJee/gorig/global/consts"
+	configure "github.com/WnJee/gorig/utils/cofigure"
+	"github.com/WnJee/gorig/utils/errors"
+	"github.com/WnJee/gorig/utils/logger"
 )
 
 const (
@@ -183,7 +183,7 @@ func (u *redisImpl) Record(userToken string, userInfo map[string]interface{}) bo
 		return u.storeToken(userToken, &tokenInfo{
 			UserID:    customClaims.UserId,
 			UserType:  getUserType(userInfo),
-			ExpiresAt: customClaims.ExpiresAt,
+			ExpiresAt: customClaims.ExpiresAtUnix(),
 		})
 	}
 	return false
@@ -212,7 +212,7 @@ func (u *redisImpl) GenerateAndRecord(ctx context.Context, userID string, userIn
 
 func (u *redisImpl) IsNotExpired(token string, expireAtSec int64) (*CustomClaims, int) {
 	if customClaims, err := u.generator.Parse(token); err == nil {
-		if time.Now().Unix()-(customClaims.ExpiresAt+expireAtSec) < 0 {
+		if time.Now().Unix()-(customClaims.ExpiresAtUnix()+expireAtSec) < 0 {
 			return customClaims, consts.JwtTokenOK
 		}
 		return customClaims, consts.JwtTokenExpired
@@ -246,7 +246,7 @@ func (u *redisImpl) Refresh(oldToken string, newToken string) bool {
 			UserType: getUserType(customClaims.UserInfo),
 		}
 	}
-	info.ExpiresAt = newClaims.ExpiresAt
+	info.ExpiresAt = newClaims.ExpiresAtUnix()
 	info.UserType = getUserType(newClaims.UserInfo)
 	info.LastRefresh = time.Now().Unix()
 

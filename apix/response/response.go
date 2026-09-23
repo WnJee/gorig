@@ -3,9 +3,9 @@ package response
 import (
 	"encoding/json"
 	"github.com/gin-gonic/gin"
-	"github.com/jom-io/gorig/global/consts"
-	"github.com/jom-io/gorig/global/errc"
-	"github.com/jom-io/gorig/utils/logger"
+	"github.com/WnJee/gorig/global/consts"
+	"github.com/WnJee/gorig/global/errc"
+	"github.com/WnJee/gorig/utils/logger"
 	"net/http"
 	"regexp"
 	"strings"

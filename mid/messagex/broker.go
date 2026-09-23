@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/jom-io/gorig/utils/errors"
+	"github.com/WnJee/gorig/utils/errors"
 	"github.com/rs/xid"
 	"strconv"
 	"strings"

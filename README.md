@@ -130,7 +130,7 @@ Use the gorig-backend skill to prepare this service for deployment with health c
 If you only need the Go framework dependency:
 
 ```sh
-go get github.com/jom-io/gorig@latest
+go get github.com/WnJee/gorig@latest
 ```
 
 For most new projects, start with `gorig-cli` instead of adding the package manually.

@@ -1,8 +1,8 @@
 package domainx
 
 import (
-	"github.com/jom-io/gorig/apix/load"
-	"github.com/jom-io/gorig/utils/errors"
+	"github.com/WnJee/gorig/apix/load"
+	"github.com/WnJee/gorig/utils/errors"
 )
 
 func (c *Con) FindByIDs(ids []int64, result *[]Identifiable) *errors.Error {

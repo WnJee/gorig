@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jom-io/gorig/cache"
-	"github.com/jom-io/gorig/cronx"
+	"github.com/WnJee/gorig/cache"
+	"github.com/WnJee/gorig/cronx"
 )
 
 type persistDelayPayload struct {

@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/gin-gonic/gin"
-	"github.com/jom-io/gorig/httpx/ssex"
+	"github.com/WnJee/gorig/httpx/ssex"
 	"net/http"
 	"net/http/httptest"
 	"strings"

@@ -1,8 +1,8 @@
 package domainx
 
 import (
-	"github.com/jom-io/gorig/serv"
-	"github.com/jom-io/gorig/utils/sys"
+	"github.com/WnJee/gorig/serv"
+	"github.com/WnJee/gorig/utils/sys"
 )
 
 const ServiceCode = "DATABASE"
