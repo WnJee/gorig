@@ -101,7 +101,10 @@ func init() {
 	gEngine.Use(Logger())
 	allowedOrigins := configureAllowedOrigins()
 	SetAllowedOrigins(allowedOrigins...)
-	if len(allowedOrigins) == 0 {
+	switch {
+	case len(allowedOrigins) == 1 && allowedOrigins[0] == "*":
+		sys.Warn(" * CORS: allow-all mode (api.cors.allowAll defaults to true): Access-Control-Allow-Origin: * without credentials; set api.cors.origins to restrict origins")
+	case len(allowedOrigins) == 0:
 		sys.Warn(" * CORS: no allowed origins configured (api.cors.origins); cross-origin browser requests will be rejected")
 	}
 	gEngine.Use(CORS())
@@ -116,10 +119,19 @@ func init() {
 	})
 }
 
-// configureAllowedOrigins reads api.cors.origins. It accepts both a YAML list
-// and a single comma-separated string, trimming whitespace around entries.
+// configureAllowedOrigins resolves the CORS whitelist with precedence:
+//  1. api.cors.origins (YAML list or comma-separated string) wins when non-empty;
+//  2. otherwise api.cors.allowAll (default true) allows every origin via "*",
+//     mirroring the historical open behavior. "*" is non-credentialed by design;
+//     cookie-based frontends must switch to explicit origins instead.
+//  3. otherwise the whitelist stays empty and browser cross-origin requests
+//     are rejected.
 func configureAllowedOrigins() []string {
-	raw := configure.GetStringSlice("api.cors.origins")
+	allowAll := configure.GetBool("api.cors.allowAll", true)
+	return resolveCorsOrigins(allowAll, configure.GetStringSlice("api.cors.origins"))
+}
+
+func resolveCorsOrigins(allowAll bool, raw []string) []string {
 	if len(raw) == 1 {
 		raw = strings.Split(raw[0], ",")
 	}
@@ -129,5 +141,11 @@ func configureAllowedOrigins() []string {
 			origins = append(origins, origin)
 		}
 	}
-	return origins
+	if len(origins) > 0 {
+		return origins
+	}
+	if allowAll {
+		return []string{"*"}
+	}
+	return nil
 }

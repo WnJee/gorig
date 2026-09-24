@@ -42,6 +42,37 @@ func TestCORSRejectsUnknownCredentialedOrigin(t *testing.T) {
 	}
 }
 
+func TestCORSAllowAllModePermitsAnyOrigin(t *testing.T) {
+	SetAllowedOrigins("*")
+	defer SetAllowedOrigins()
+	r := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(r)
+	c.Request = httptest.NewRequest(http.MethodOptions, "/", nil)
+	c.Request.Header.Set("Origin", "https://any.example")
+	CORS()(c)
+	if r.Code != http.StatusNoContent {
+		t.Fatalf("expected 204 for preflight in allow-all mode, got %d", r.Code)
+	}
+	if got := r.Header().Get("Access-Control-Allow-Origin"); got != "*" {
+		t.Fatalf("expected wildcard allow-origin, got %q", got)
+	}
+}
+
+func TestResolveCorsOriginsPrecedence(t *testing.T) {
+	if got := resolveCorsOrigins(true, nil); len(got) != 1 || got[0] != "*" {
+		t.Fatalf("expected allow-all default, got %v", got)
+	}
+	if got := resolveCorsOrigins(true, []string{" https://a.example ", ""}); len(got) != 1 || got[0] != "https://a.example" {
+		t.Fatalf("expected explicit origins to win and be trimmed, got %v", got)
+	}
+	if got := resolveCorsOrigins(false, []string{"a,b"}); len(got) != 2 || got[0] != "a" || got[1] != "b" {
+		t.Fatalf("expected comma splitting with allowAll disabled, got %v", got)
+	}
+	if got := resolveCorsOrigins(false, nil); got != nil {
+		t.Fatalf("expected empty whitelist when disabled, got %v", got)
+	}
+}
+
 func TestGetReturnsHTTPErrorForNon2xx(t *testing.T) {
 	previous := client.Load()
 	defer client.Store(previous)
