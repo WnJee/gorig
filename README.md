@@ -1,11 +1,11 @@
-# Gorig: AI-Native Backend Delivery System [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/jom-io/gorig)
+# Gorig: AI-Native Backend Delivery System [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/WnJee/gorig)
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-**Gorig** is a backend delivery system for the AI era. It combines a Go web service framework, `gorig-cli`, and the `gorig-backend` AI skill so teams can turn product intent into structured, verified, and operable backend services.
+**Gorig** is a backend delivery system for the AI era. It combines a Go web service framework, `gorig-cli`, and the `gorig-agent` AI skill so teams can turn product intent into structured, verified, and operable backend services.
 
-📚 **Project Wiki**: [https://deepwiki.com/jom-io/gorig](https://deepwiki.com/jom-io/gorig)  
-🔧 **Operations Dashboard**: [https://github.com/jom-io/gorig-om](https://github.com/jom-io/gorig-om)
+📚 **Project Wiki**: [https://deepwiki.com/WnJee/gorig](https://deepwiki.com/WnJee/gorig)  
+🔧 **Operations Dashboard**: [https://github.com/WnJee/gorig-om](https://github.com/WnJee/gorig-om)
 
 ![Gorig AI backend workflow](docs/assets/gorig-ai-workflow.svg)
 
@@ -21,7 +21,7 @@ Gorig packages those needs into one delivery workflow:
 | Keep AI on rails | Preserve consistent Router -> Controller -> Service -> Model boundaries instead of accepting one-off generated code. |
 | Verify before trust | Treat AI output as a delivery artifact with build checks, tests, smoke verification, and generated docs. |
 | Operate after launch | Use built-in patterns for health, logs, scheduling, messaging, SSE, auth, configuration, graceful shutdown, and rollback planning. |
-| Grow as an ecosystem | Add `gorig-node`, `gorig-hub`, and `gorig-om` when services need discovery, SDK generation, runtime nodes, and operations visibility. |
+| Grow as an ecosystem | Pair with `gorig-agent` for autonomous delivery and `gorig-om` for runtime observability and operations. |
 
 ## Delivery Workflow
 
@@ -30,21 +30,18 @@ Gorig is designed around the full backend lifecycle, not a single scaffolding co
 | Step | What happens |
 |---|---|
 | 1. Describe | Start from product language: customer management, order workflow, reminder task, admin API, service deployment. |
-| 2. Scaffold | `gorig-cli` creates projects, modules, CRUD services, tests, docs, and environment configuration. |
-| 3. Implement | The `gorig-backend` skill guides AI agents with real Gorig APIs, module boundaries, source checks, and framework rules. |
-| 4. Verify | Generated services are expected to pass `go fmt`, `go vet`, `go build`, tests, and route-level smoke checks. |
-| 5. Operate | Services can connect to operations tooling, runtime nodes, service registration, generated SDKs, and deployment workflows. |
+| 2. Scaffold | Structure projects, modules, CRUD services, validation rules, docs, and environment configuration. |
+| 3. Implement | The `gorig-agent` skill guides AI agents with real Gorig APIs, module boundaries, source checks, and framework rules. |
+| 4. Verify | Generated services are expected to pass `go fmt`, `go vet`, `go build`, and route-level checks. |
+| 5. Operate | Services connect to `gorig-om` for runtime monitoring, log analysis, error clustering, and lifecycle management. |
 
 ## Ecosystem
 
 | Project | Role |
 |---|---|
-| `gorig` | Go backend framework: HTTP, routing, response helpers, domain/data access, cache, cron, messaging, SSE, auth, logging, and service lifecycle. |
-| `gorig-cli` | Productive entry point: initialize projects, create modules, generate CRUD, produce docs, and install AI skills. |
-| `gorig-backend` skill | AI delivery guide for Codex and Claude: source-aware implementation rules, testing policy, framework references, and scenario decomposition. |
-| `gorig-node` | Hub-aware service node: register service handlers and expose direct or hub-routed calls. |
-| `gorig-hub` | Service registry and SDK generator: receive node metadata, manage heartbeat, and publish generated Go SDKs. |
-| `gorig-om` | Operations panel: service status, configuration, logs, API latency, error signatures, goroutine trends, and memory diagnostics. |
+| `gorig` | Core Go backend framework: HTTP routing, generic request binding (`apix`), fluent ORM (`dx`), multi-level cache, distributed cron, auth, messaging, SSE, and storage. |
+| `gorig-agent` | AI Agent delivery skill: framework-aware implementation rules, layer boundaries, source patterns, and standard engineering guidelines. |
+| `gorig-om` | Operations & Observability platform: service status, runtime metrics, logs, error signatures, goroutine trends, and memory diagnostics. |
 
 ## Quick Start
 
@@ -103,7 +100,7 @@ The CRUD generator creates service/model logic, optional HTTP routes, validation
 
 ## Use with AI Agents
 
-Install the bundled `gorig-backend` skill when you want Codex or Claude to work with Gorig projects using framework-aware rules instead of generic backend generation.
+Install the bundled `gorig-agent` skill when you want AI agents (Codex, Claude, Antigravity) to work with Gorig projects using framework-aware rules instead of generic backend generation.
 
 ```sh
 npx gorig-cli@latest skill install codex
@@ -114,15 +111,15 @@ npx gorig-cli@latest skill install codex project
 Then ask for backend work in product language:
 
 ```text
-Use the gorig-backend skill to create a customer management backend with CRUD APIs, MySQL persistence, tests, and API docs.
+Use the gorig-agent skill to create a customer management backend with CRUD APIs, MySQL persistence, tests, and API docs.
 ```
 
 ```text
-Use the gorig-backend skill to add login, protected routes, token refresh, logout, and security tests to this Gorig service.
+Use the gorig-agent skill to add login, protected routes, token refresh, logout, and security tests to this Gorig service.
 ```
 
 ```text
-Use the gorig-backend skill to prepare this service for deployment with health checks, structured logs, release layout, and rollback steps.
+Use the gorig-agent skill to prepare this service for deployment with health checks, structured logs, release layout, and rollback steps.
 ```
 
 ## Functional Modules & Demos

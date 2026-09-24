@@ -66,7 +66,7 @@
   <circle cx="390" cy="187" r="6" fill="#FF7A59"/>
   <circle cx="412" cy="187" r="6" fill="#F5B841"/>
   <circle cx="434" cy="187" r="6" fill="#2CB67D"/>
-  <text x="460" y="192" fill="#DCE9ED" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="700">gorig-cli + gorig-backend skill</text>
+  <text x="460" y="192" fill="#DCE9ED" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="700">gorig-cli + gorig-agent skill</text>
 
   <text x="388" y="252" fill="#FFFFFF" font-family="Inter, Arial, sans-serif" font-size="31" font-weight="900">One system for AI-built</text>
   <text x="388" y="287" fill="#FFFFFF" font-family="Inter, Arial, sans-serif" font-size="31" font-weight="900">production backends</text>
@@ -106,16 +106,10 @@
   <text x="850" y="446" fill="#142131" font-family="Inter, Arial, sans-serif" font-size="16" font-weight="850">eyes open</text>
   <text x="850" y="466" fill="#607384" font-family="Inter, Arial, sans-serif" font-size="12">Health, logs, metrics, rollback</text>
 
-  <rect x="72" y="560" width="976" height="30" rx="15" fill="#FFFFFF" stroke="#E3EAF0"/>
-  <text x="102" y="580" fill="#485C6C" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="750">gorig-cli</text>
-  <circle cx="190" cy="575" r="3" fill="#9DAFBC"/>
-  <text x="210" y="580" fill="#485C6C" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="750">gorig-backend skill</text>
-  <circle cx="356" cy="575" r="3" fill="#9DAFBC"/>
-  <text x="376" y="580" fill="#485C6C" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="750">Gorig framework</text>
-  <circle cx="524" cy="575" r="3" fill="#9DAFBC"/>
-  <text x="544" y="580" fill="#485C6C" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="750">gorig-node</text>
-  <circle cx="654" cy="575" r="3" fill="#9DAFBC"/>
-  <text x="674" y="580" fill="#485C6C" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="750">gorig-hub SDKs</text>
-  <circle cx="822" cy="575" r="3" fill="#9DAFBC"/>
-  <text x="842" y="580" fill="#485C6C" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="750">gorig-om operations</text>
+  <rect x="180" y="560" width="760" height="30" rx="15" fill="#FFFFFF" stroke="#E3EAF0"/>
+  <text x="230" y="580" fill="#485C6C" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="750">Gorig framework</text>
+  <circle cx="430" cy="575" r="3" fill="#9DAFBC"/>
+  <text x="450" y="580" fill="#485C6C" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="750">gorig-agent skill</text>
+  <circle cx="650" cy="575" r="3" fill="#9DAFBC"/>
+  <text x="670" y="580" fill="#485C6C" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="750">gorig-om operations</text>
 </svg>
