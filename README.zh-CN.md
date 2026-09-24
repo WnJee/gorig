@@ -4,7 +4,6 @@
 
 **Gorig** 是面向 AI 时代的后端交付体系。它把 Go Web 服务框架、`gorig_gen_cli` 和 `gorig-agent` AI Skill 组合在一起，让团队可以把产品意图转化为结构稳定、可验证、可运维的后端服务。
 
-📚 **项目 Wiki**：[https://deepwiki.com/WnJee/gorig](https://deepwiki.com/WnJee/gorig)  
 🔧 **运维面板**：[https://github.com/WnJee/gorig-om](https://github.com/WnJee/gorig-om)
 
 ![Gorig AI 时代后端交付体系](docs/assets/gorig-ai-workflow-cn.svg)
