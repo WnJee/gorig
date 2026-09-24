@@ -2,7 +2,7 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-**Gorig** is a backend delivery system for the AI era. It combines a Go web service framework, `gorig-cli`, and the `gorig-agent` AI skill so teams can turn product intent into structured, verified, and operable backend services.
+**Gorig** is a backend delivery system for the AI era. It combines a Go web service framework, `gorig_gen_cli`, and the `gorig-agent` AI skill so teams can turn product intent into structured, verified, and operable backend services.
 
 📚 **Project Wiki**: [https://deepwiki.com/WnJee/gorig](https://deepwiki.com/WnJee/gorig)  
 🔧 **Operations Dashboard**: [https://github.com/WnJee/gorig-om](https://github.com/WnJee/gorig-om)
@@ -50,41 +50,41 @@ Gorig is designed around the full backend lifecycle, not a single scaffolding co
 Run without installing globally:
 
 ```sh
-npx gorig-cli@latest init my-new-project --no-start
+npx gorig_gen_cli@latest init my-new-project
 ```
 
 Or install the CLI globally:
 
 ```sh
-npm install -g gorig-cli
-gorig-cli init my-new-project --no-start
+npm install -g gorig_gen_cli
+gorig_gen_cli init my-new-project
 ```
 
-The generated project includes a runnable entry point, local/dev/prod configuration, and a dependency-light example module.
+The generated project includes a runnable entry point (`_cmd/main.go`), multi-environment configs (`_bin/*.yaml`), HTTP services (`api/init.go`), and DDD domain initialization (`domain/init.go`).
 
 ### Run the Project
 
 ```sh
 cd my-new-project
-GORIG_SYS_MODE=local go run ./_cmd
+go run _cmd/main.go
 ```
 
 ### Add a Module
 
 ```sh
-npx gorig-cli@latest create user
+npx gorig_gen_cli@latest create user
 ```
 
-This creates a flat feature module:
+This creates the outer API layer and inner DDD domain layer:
 
 ```text
-domain/user/
-├── router.go
-├── controller.go
-├── service.go
-├── dto.go
-└── model/
-    └── user.go
+├── api/user/
+│   ├── controller.go
+│   └── router.go
+└── domain/user/
+    ├── dto.go
+    ├── model.go
+    └── service.go
 ```
 
 ### Generate Persistent CRUD
@@ -146,7 +146,7 @@ If you only need the Go framework dependency:
 go get github.com/WnJee/gorig@latest
 ```
 
-For most new projects, start with `gorig-cli` instead of adding the package manually.
+For most new projects, start with `gorig_gen_cli` instead of adding the package manually.
 
 ## Quality Gates
 

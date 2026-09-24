@@ -2,7 +2,7 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-**Gorig** 是面向 AI 时代的后端交付体系。它把 Go Web 服务框架、`gorig-cli` 和 `gorig-agent` AI Skill 组合在一起，让团队可以把产品意图转化为结构稳定、可验证、可运维的后端服务。
+**Gorig** 是面向 AI 时代的后端交付体系。它把 Go Web 服务框架、`gorig_gen_cli` 和 `gorig-agent` AI Skill 组合在一起，让团队可以把产品意图转化为结构稳定、可验证、可运维的后端服务。
 
 📚 **项目 Wiki**：[https://deepwiki.com/WnJee/gorig](https://deepwiki.com/WnJee/gorig)  
 🔧 **运维面板**：[https://github.com/WnJee/gorig-om](https://github.com/WnJee/gorig-om)
@@ -50,41 +50,41 @@ Gorig 关注完整后端生命周期，而不是单个脚手架命令。
 不全局安装，直接运行：
 
 ```sh
-npx gorig-cli@latest init my-new-project --no-start
+npx gorig_gen_cli@latest init my-new-project
 ```
 
 或者全局安装 CLI：
 
 ```sh
-npm install -g gorig-cli
-gorig-cli init my-new-project --no-start
+npm install -g gorig_gen_cli
+gorig_gen_cli init my-new-project
 ```
 
-生成的项目包含可运行入口、local/dev/prod 配置，以及一个轻依赖的示例模块。
+生成的项目包含可运行入口（`_cmd/main.go`）、多环境配置（`_bin/*.yaml`）、外层 HTTP 服务注册（`api/init.go`），以及 DDD 领域模型初始化（`domain/init.go`）。
 
 ### 运行项目
 
 ```sh
 cd my-new-project
-GORIG_SYS_MODE=local go run ./_cmd
+go run _cmd/main.go
 ```
 
 ### 添加模块
 
 ```sh
-npx gorig-cli@latest create user
+npx gorig_gen_cli@latest create user
 ```
 
-生成的模块采用扁平业务结构：
+生成的模块采用外层 API 与内层 DDD 领域解耦设计：
 
 ```text
-domain/user/
-├── router.go
-├── controller.go
-├── service.go
-├── dto.go
-└── model/
-    └── user.go
+├── api/user/
+│   ├── controller.go     # HTTP 控制器 (apix.BindReq 泛型绑定)
+│   └── router.go         # 路由映射注册
+└── domain/user/
+    ├── dto.go            # 领域入参、出参及过滤 DTO
+    ├── model.go          # 数据实体与 AutoMigrate 配置
+    └── service.go        # 领域核心业务逻辑 (dx ORM 操作)
 ```
 
 ### 生成持久化 CRUD
@@ -146,7 +146,7 @@ Gorig 提供了现代 Go 后端开发开箱即用的高生产力组件库。点�
 go get github.com/WnJee/gorig@latest
 ```
 
-多数新项目建议从 `gorig-cli` 开始，而不是手动添加包依赖。
+多数新项目建议从 `gorig_gen_cli` 开始，而不是手动添加包依赖。
 
 ## 质量检查
 
