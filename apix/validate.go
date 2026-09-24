@@ -18,7 +18,7 @@ var (
 )
 
 func registerTimeValidators(v *validator.Validate) {
-	// 1. datetime validator: default "2006-01-02 15:04:05" or RFC3339, or custom layout via param
+	// 1. datetime validator: fixed format "2006-01-02 15:04:05", or custom layout via param
 	_ = v.RegisterValidation("datetime", func(fl validator.FieldLevel) bool {
 		val := fl.Field().String()
 		if val == "" {
@@ -29,15 +29,11 @@ func registerTimeValidators(v *validator.Validate) {
 			_, err := time.Parse(param, val)
 			return err == nil
 		}
-		for _, layout := range []string{"2006-01-02 15:04:05", time.RFC3339, "2006-01-02T15:04:05"} {
-			if _, err := time.Parse(layout, val); err == nil {
-				return true
-			}
-		}
-		return false
+		_, err := time.Parse("2006-01-02 15:04:05", val)
+		return err == nil
 	})
 
-	// 2. date validator: default "2006-01-02" or custom layout via param
+	// 2. date validator: fixed format "2006-01-02", or custom layout via param
 	_ = v.RegisterValidation("date", func(fl validator.FieldLevel) bool {
 		val := fl.Field().String()
 		if val == "" {
@@ -48,15 +44,11 @@ func registerTimeValidators(v *validator.Validate) {
 			_, err := time.Parse(param, val)
 			return err == nil
 		}
-		for _, layout := range []string{"2006-01-02", "2006/01/02", "20060102"} {
-			if _, err := time.Parse(layout, val); err == nil {
-				return true
-			}
-		}
-		return false
+		_, err := time.Parse("2006-01-02", val)
+		return err == nil
 	})
 
-	// 3. time validator: default "15:04:05" or "15:04", or custom layout via param
+	// 3. time validator: fixed format "15:04:05", or custom layout via param
 	_ = v.RegisterValidation("time", func(fl validator.FieldLevel) bool {
 		val := fl.Field().String()
 		if val == "" {
@@ -67,12 +59,8 @@ func registerTimeValidators(v *validator.Validate) {
 			_, err := time.Parse(param, val)
 			return err == nil
 		}
-		for _, layout := range []string{"15:04:05", "15:04"} {
-			if _, err := time.Parse(layout, val); err == nil {
-				return true
-			}
-		}
-		return false
+		_, err := time.Parse("15:04:05", val)
+		return err == nil
 	})
 }
 
