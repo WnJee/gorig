@@ -422,22 +422,23 @@ func (s *gormDBService) SumByMatch(c *Con, matchList []Match, field string) (flo
 }
 
 func (s *gormDBService) FindByPageMatch(c *Con, matchList []Match, page *load.Page, total *load.Total, result interface{}, prefixes ...string) error {
-	tx := c.MysqlDB.WithContext(c.Ctx).Table(c.TableName())
-	tx, near := matchMysqlCond(matchList, tx)
-	tx = sortMysqlCond(c.Sort, tx)
+	baseTx := c.MysqlDB.WithContext(c.Ctx).Table(c.TableName())
+	baseTx, near := matchMysqlCond(matchList, baseTx)
+	baseTx = sortMysqlCond(c.Sort, baseTx)
+
 	count := int64(0)
-	if err := tx.Model(result).Count(&count).Error; err != nil {
+	countTx := baseTx.Session(&gorm.Session{})
+	if err := countTx.Model(result).Count(&count).Error; err != nil {
 		return err
 	}
-	if page.LastID > 0 {
-		query := tx.Where("id < ?", page.LastID).Order("id desc").Limit(int(page.Size))
-		query = applyMysqlFields(query, c, near)
-		tx = query.Find(result)
-	} else {
-		query := tx.Order("id desc").Limit(int(page.Size)).Offset(int(page.Offset()))
-		query = applyMysqlFields(query, c, near)
-		tx = query.Find(result)
-	}
 	total.Set(count)
-	return tx.Error
+
+	dataTx := baseTx.Session(&gorm.Session{})
+	if page.LastID > 0 {
+		dataTx = dataTx.Where("id < ?", page.LastID).Order("id desc").Limit(int(page.Size))
+	} else {
+		dataTx = dataTx.Order("id desc").Limit(int(page.Size)).Offset(int(page.Offset()))
+	}
+	dataTx = applyMysqlFields(dataTx, c, near)
+	return dataTx.Find(result).Error
 }

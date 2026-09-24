@@ -37,8 +37,13 @@ func doGetArrForIn(c *gin.Context) []zap.Field {
 
 func sanitizedHeaders(input http.Header) http.Header {
 	result := input.Clone()
-	for _, key := range []string{"Authorization", "Cookie", "Set-Cookie", "X-Api-Key"} {
-		if result.Get(key) != "" {
+	for _, key := range []string{"Authorization", "X-Api-Key", "Token", "X-Token", "Access-Token"} {
+		if val := result.Get(key); val != "" {
+			result.Set(key, logger.MaskToken(val))
+		}
+	}
+	for _, key := range []string{"Cookie", "Set-Cookie"} {
+		if val := result.Get(key); val != "" {
 			result.Set(key, "[REDACTED]")
 		}
 	}
@@ -47,13 +52,21 @@ func sanitizedHeaders(input http.Header) http.Header {
 
 func sanitizedQuery(input map[string][]string) map[string][]string {
 	result := make(map[string][]string, len(input))
-	for key, value := range input {
+	for key, values := range input {
 		lower := strings.ToLower(key)
-		if strings.Contains(lower, "token") || strings.Contains(lower, "secret") || strings.Contains(lower, "password") || strings.Contains(lower, "key") {
-			result[key] = []string{"[REDACTED]"}
+		if strings.Contains(lower, "token") || strings.Contains(lower, "ticket") || strings.Contains(lower, "secret") || strings.Contains(lower, "key") {
+			masked := make([]string, len(values))
+			for i, v := range values {
+				masked[i] = logger.MaskToken(v)
+			}
+			result[key] = masked
 			continue
 		}
-		result[key] = append([]string(nil), value...)
+		if strings.Contains(lower, "password") || strings.Contains(lower, "pwd") {
+			result[key] = []string{"******"}
+			continue
+		}
+		result[key] = append([]string(nil), values...)
 	}
 	return result
 }

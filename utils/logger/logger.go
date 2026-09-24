@@ -2,6 +2,7 @@ package logger
 
 import (
 	"context"
+	"fmt"
 	"github.com/gin-gonic/gin"
 	"github.com/WnJee/gorig/global/consts"
 	configure "github.com/WnJee/gorig/utils/cofigure"
@@ -205,13 +206,138 @@ func Debug(ctx context.Context, msg string, fields ...zap.Field) {
 }
 
 func insertLine(fields ...zap.Field) []zap.Field {
-	//pc, file, line, ok := runtime.Caller(2)
-	//if ok {
-	//	// 获取函数名
-	//	funcName := runtime.FuncForPC(pc).Name()
-	//	fields = append(fields, zap.String("line", file+":"+funcName+":"+cast.ToString(line)))
-	//}
 	return fields
+}
+
+// Infof writes a formatted info message with trace context.
+func Infof(ctx context.Context, format string, args ...any) {
+	Info(ctx, fmt.Sprintf(format, args...))
+}
+
+// Warnf writes a formatted warn message with trace context.
+func Warnf(ctx context.Context, format string, args ...any) {
+	Warn(ctx, fmt.Sprintf(format, args...))
+}
+
+// Errorf writes a formatted error message with trace context.
+func Errorf(ctx context.Context, format string, args ...any) {
+	Error(ctx, fmt.Sprintf(format, args...))
+}
+
+// Debugf writes a formatted debug message with trace context.
+func Debugf(ctx context.Context, format string, args ...any) {
+	Debug(ctx, fmt.Sprintf(format, args...))
+}
+
+// InfoKV logs an info message with key-value pairs.
+func InfoKV(ctx context.Context, msg string, kvs ...any) {
+	Info(ctx, msg, toZapFields(kvs...)...)
+}
+
+// WarnKV logs a warning message with key-value pairs.
+func WarnKV(ctx context.Context, msg string, kvs ...any) {
+	Warn(ctx, msg, toZapFields(kvs...)...)
+}
+
+// ErrorKV logs an error message with key-value pairs.
+func ErrorKV(ctx context.Context, msg string, kvs ...any) {
+	Error(ctx, msg, toZapFields(kvs...)...)
+}
+
+// DebugKV logs a debug message with key-value pairs.
+func DebugKV(ctx context.Context, msg string, kvs ...any) {
+	Debug(ctx, msg, toZapFields(kvs...)...)
+}
+
+// toZapFields converts key-value pairs into zap fields.
+func toZapFields(kvs ...any) []zap.Field {
+	if len(kvs) == 0 {
+		return nil
+	}
+	fields := make([]zap.Field, 0, len(kvs)/2)
+	for i := 0; i < len(kvs); i += 2 {
+		key := cast.ToString(kvs[i])
+		if i+1 < len(kvs) {
+			fields = append(fields, zap.Any(key, kvs[i+1]))
+		} else {
+			fields = append(fields, zap.Any(key, nil))
+		}
+	}
+	return fields
+}
+
+// WithContext returns a zap.Logger with the context's TraceID and UserID attached.
+func WithContext(ctx context.Context) *zap.Logger {
+	fields := putTraceId(ctx)
+	return Logger.With(fields...)
+}
+
+// Sugar returns a sugared logger with context fields attached.
+func Sugar(ctx context.Context) *zap.SugaredLogger {
+	return WithContext(ctx).Sugar()
+}
+
+// With creates a child logger with the given zap fields.
+func With(fields ...zap.Field) *zap.Logger {
+	return Logger.With(fields...)
+}
+
+// MaskString masks middle characters of a string, keeping prefix and suffix characters.
+func MaskString(s string, prefixLen, suffixLen int) string {
+	runes := []rune(s)
+	total := len(runes)
+	if total == 0 {
+		return ""
+	}
+	if total <= prefixLen+suffixLen {
+		if total <= 4 {
+			return strings.Repeat("*", total)
+		}
+		return string(runes[:1]) + strings.Repeat("*", total-2) + string(runes[total-1:])
+	}
+	maskLen := total - prefixLen - suffixLen
+	if maskLen > 6 {
+		maskLen = 6
+	}
+	return string(runes[:prefixLen]) + strings.Repeat("*", maskLen) + string(runes[total-suffixLen:])
+}
+
+// MaskToken masks sensitive tokens (e.g., Bearer tokens, API keys, JWTs), keeping header and tail characters.
+func MaskToken(token string) string {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return ""
+	}
+	if strings.HasPrefix(strings.ToLower(token), "bearer ") {
+		prefix := token[:7]
+		raw := token[7:]
+		return prefix + MaskString(raw, 6, 4)
+	}
+	return MaskString(token, 6, 4)
+}
+
+// MaskPhone masks phone numbers (e.g., 138****1234).
+func MaskPhone(phone string) string {
+	phone = strings.TrimSpace(phone)
+	if len(phone) < 7 {
+		return MaskString(phone, 2, 2)
+	}
+	return MaskString(phone, 3, 4)
+}
+
+// MaskEmail masks email addresses (e.g., a***b@example.com).
+func MaskEmail(email string) string {
+	email = strings.TrimSpace(email)
+	atIdx := strings.Index(email, "@")
+	if atIdx <= 0 {
+		return MaskString(email, 2, 2)
+	}
+	name := email[:atIdx]
+	domain := email[atIdx:]
+	if len(name) <= 2 {
+		return string(name[0]) + "***" + domain
+	}
+	return string(name[0]) + "***" + string(name[len(name)-1]) + domain
 }
 
 var Logger *zap.Logger

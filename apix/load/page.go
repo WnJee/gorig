@@ -71,19 +71,14 @@ func (p *Page) SetPage(page int64) {
 
 func BuildPage(ctx context.Context, page, pageSize, lastId int64) *Page {
 	if page <= 0 {
-		logger.Warn(ctx, "page is less than 0, set to 1")
 		page = 1
 	}
 	if pageSize <= 0 {
-		logger.Warn(ctx, "pageSize is less than 0, set to 10")
 		pageSize = 10
-	}
-	if pageSize > 10000 {
-		logger.Warn(ctx, "pageSize is too large, set to 10000")
+	} else if pageSize > 10000 {
 		pageSize = 10000
 	}
 	if lastId < 0 {
-		logger.Warn(ctx, "lastId is less than 0, set to 0")
 		lastId = 0
 	}
 	return &Page{
