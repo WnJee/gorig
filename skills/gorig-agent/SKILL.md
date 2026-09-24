@@ -1,15 +1,59 @@
 ---
 name: gorig-agent
-description: Comprehensive development and delivery skill for building AI-native Go backend services using the Gorig framework. Use for scaffolding, routing, generic API binding (apix), fluent ORM (dx/domainx), multi-level caching (cache), HTTP/SSE streaming (httpx/ssex), cron tasks (cronx), JWT auth (mid/tokenx), pubsub messaging (mid/messagex), object storage (storage), and structured utils.
+description: Comprehensive development and delivery skill for building AI-native Go backend services using the Gorig framework. Use for project scaffolding, module generation (gorig_gen_cli), HTTP routing & generic parameter binding (apix), fluent ORM (dx/domainx), multi-level caching (cache), HTTP/SSE streaming (httpx/ssex), cron tasks (cronx), JWT auth (mid/tokenx), pubsub messaging (mid/messagex), object storage (storage), and structured utils.
 ---
 
 # Gorig AI Agent Skill (`gorig-agent`)
 
-This skill provides an authoritative, source-aware delivery standard for AI agents building, refactoring, and maintaining Go backend applications powered by the **Gorig Framework** (`github.com/WnJee/gorig`).
+This skill provides an authoritative, source-aware delivery standard for AI agents building, refactoring, and maintaining Go backend applications powered by the **Gorig Framework** (`github.com/WnJee/gorig`) and the official **`gorig_gen_cli`** tool.
 
 ---
 
-## 1. Architectural Principles & Boundaries
+## 1. Project Scaffolding & Architecture Rules
+
+### 1.1 `gorig_gen_cli` Priority Rule (脚手架与模块生成优先原则)
+
+> **CRITICAL RULE**: When initializing a new project or creating a new business domain module, the AI Agent **MUST prioritize directly executing `gorig_gen_cli` CLI commands** instead of manually creating directories, boilerplate files, or stitching `init.go` import statements from scratch.
+
+#### Commands to Use:
+1. **Initialize New Project**:
+   ```sh
+   npx gorig_gen_cli@latest init <project-name>
+   # or with global install:
+   gorig_gen_cli init <project-name>
+   ```
+   Automatically generates complete standard project layouts:
+   - `_bin/` (`dev.yaml`, `local.yaml`, `prod.yaml`)
+   - `_cmd/main.go` (program entry & bootstrap)
+   - `api/init.go` (HTTP router auto-registration)
+   - `domain/init.go` (DDD domain model auto-migration)
+   - `cron/cron.go` (scheduled task configuration)
+   - `global/config.go` (global configurations)
+   - `go.mod` (Go 1.23 with `github.com/WnJee/gorig@latest`)
+
+2. **Create New Business Domain Module**:
+   ```sh
+   npx gorig_gen_cli@latest create <module-name>
+   # or with global install:
+   gorig_gen_cli create <module-name>
+   ```
+   Automatically creates the DDD 4-tier module files and injects blank imports into `api/init.go` and `domain/init.go`:
+   - `api/<module>/controller.go` — HTTP controller with generic `apix.BindReq`
+   - `api/<module>/router.go` — Route group definition & registration
+   - `domain/<module>/dto.go` — Request, Response, and Filter DTO structs
+   - `domain/<module>/model.go` — Entity model with `DConfig()` & `AutoMigrate()`
+   - `domain/<module>/service.go` — Domain business logic powered by `dx` fluent ORM
+
+3. **Generate OpenAPI Docs & Interactive ReDoc Preview**:
+   ```sh
+   npx gorig_gen_cli@latest doc
+   # or for a specific module:
+   npx gorig_gen_cli@latest doc <module-name>
+   ```
+
+---
+
+### 1.2 4-Tier Layered Architecture
 
 All Gorig backend services strictly adhere to the 4-tier layered architecture:
 
@@ -29,17 +73,31 @@ All Gorig backend services strictly adhere to the 4-tier layered architecture:
  4. Model / DX    (domainx/dx fluent ORM, multi-engine MySQL/MongoDB/SQLite, Snowflake ID)
 ```
 
-### Module File Layout
-Each business domain feature must be encapsulated in `domain/<feature>/`:
-
+### Standard Module Directory Structure
 ```text
-domain/user/
-├── router.go       # Defines RouteGroup and registers endpoints with httpx
-├── controller.go   # Unpacks request via apix.BindReq, calls service, returns apix response
-├── service.go      # Pure business logic, caching, event dispatch, DX operations
-├── dto.go          # Request & Response structs with binding & validation tags
-└── model/
-    └── user.go     # GORM / Mongo data model definition (embeds dx.Model)
+my-app/
+├── _bin/                         # Multi-environment YAML configs
+│   ├── dev.yaml
+│   ├── local.yaml
+│   └── prod.yaml
+├── _cmd/
+│   └── main.go                   # Main entry point
+├── api/                          # 【HTTP Interface Layer】
+│   ├── init.go                   # HTTP service router registry (auto-imports api modules)
+│   └── user/
+│       ├── controller.go         # Controller (apix.BindReq generic parsing & responses)
+│       └── router.go             # Gin route group definition
+├── cron/
+│   └── cron.go                   # Cron job registry
+├── domain/                       # 【DDD Domain Layer】
+│   ├── init.go                   # Domain model registry (auto-imports domain modules)
+│   └── user/
+│       ├── dto.go                # Req / Resp / Filter DTOs
+│       ├── model.go              # Database model entity & DConfig & AutoMigrate
+│       └── service.go            # Pure business logic & dx ORM operations
+├── global/
+│   └── config.go                 # App-level config variables
+└── go.mod
 ```
 
 ---
@@ -48,8 +106,8 @@ domain/user/
 
 ### 2.1 `apix` — Request Binding, Validation & Responses
 
-#### Generic Request Binding
-Always prefer `apix.BindReq[T](c)` over manual binding boilerplate. It automatically extracts parameters across JSON body, Query strings, Route parameters, and Form data, and performs struct validation:
+#### Generic Request Binding (`apix.BindReq[T]`)
+Always prefer `apix.BindReq[T](c)` over manual parameter parsing. It automatically extracts parameters across JSON body, Query strings, Route parameters, and Form data, and validates binding tags:
 
 ```go
 type CreateUserReq struct {
@@ -93,7 +151,7 @@ traceID := apix.Header[string](c, "X-Trace-ID", "")
 // 200 OK standard response: {"code": 200, "msg": "success", "data": ...}
 apix.Ok(c, data)
 
-// 200 OK paginated response: {"code": 200, "msg": "success", "data": {"items": [...], "total": 100, "page": 1, "page_size": 20}}
+// 200 OK paginated response
 apix.OkPage(c, items, total, page, pageSize)
 
 // Business Error response: {"code": 40001, "msg": "user already exists", "data": null}
@@ -110,58 +168,62 @@ Gorig provides the `dx` fluent database query layer across MySQL, SQLite, and Mo
 #### Model Definition
 ```go
 type User struct {
-    dx.Model        // Automatically embeds ID (Snowflake/uint64), CreatedAt, UpdatedAt, DeletedAt
-    Username string `gorm:"column:username;type:varchar(64);uniqueIndex;not null" json:"username"`
-    Email    string `gorm:"column:email;type:varchar(128);index" json:"email"`
-    Status   int    `gorm:"column:status;default:1" json:"status"`
+    ID       int64   `gorm:"column:id;primaryKey" json:"id"`
+    Username string  `gorm:"column:username;type:varchar(64);uniqueIndex;not null" json:"username"`
+    Email    string  `gorm:"column:email;type:varchar(128);index" json:"email"`
+    Status   int     `gorm:"column:status;default:1" json:"status"`
 }
 
-func (User) TableName() string {
-    return "users"
+// DConfig binds storage engine type, database name ("main"), and table name
+func (u *User) DConfig() (domainx.ConType, string, string) {
+    return domainx.Mysql, "main", "users"
+}
+
+func init() {
+    domainx.AutoMigrate(func() domainx.ConTable {
+        return dx.On[User](context.Background()).Complex()
+    })
 }
 ```
 
 #### Querying & CRUD Operations
 ```go
 // 1. Query multiple records with conditions
-var users []User
-err := dx.On().
-    Where("status", 1).
-    WhereIn("id", []int64{101, 102, 103}).
-    OrderByDesc("created_at").
-    Find(&users)
+users, err := dx.On[User](ctx).
+    Eq("status", 1).
+    In("id", []int64{101, 102, 103}).
+    Sort("id", false). // false = DESC, true = ASC
+    FindData()
 
 // 2. Query first matching record
-var user User
-err := dx.On().Where("email", email).First(&user)
+user, err := dx.On[User](ctx).Eq("email", email).FirstData()
 
-// 3. Create record
+// 3. Create record (automatic Snowflake ID generation)
 newUser := User{Username: "alice", Email: "alice@example.com"}
-err := dx.On().Create(&newUser)
+id, err := dx.On(ctx, &newUser).Save()
 
 // 4. Update single column or map
-err := dx.On().Where("id", user.ID).Update("status", 2)
-err := dx.On().Where("id", user.ID).Updates(map[string]any{
+err := dx.On[User](ctx).WithID(id).Update("status", 2)
+err := dx.On[User](ctx).WithID(id).Updates(map[string]any{
     "username": "alice_updated",
     "status":   1,
 })
 
 // 5. Delete
-err := dx.On().Where("id", user.ID).Delete(&User{})
+err := dx.On[User](ctx).WithID(id).Delete()
 
 // 6. Pagination
-var pagedUsers []User
-total, err := dx.On().
-    Where("status", 1).
-    OrderByDesc("id").
-    Paginate(&pagedUsers, page, pageSize)
+pagedResp, err := dx.On[User](ctx).
+    Eq("status", 1).
+    Sort("id", false).
+    PageData(page, pageSize)
 
 // 7. Atomic Database Transactions
-err := dx.On().Transaction(func(tx *dx.Engine) error {
-    if err := tx.Where("id", fromID).Update("balance", gorm.Expr("balance - ?", amount)); err != nil {
+err := domainx.Transaction(ctx, func(txCtx context.Context) error {
+    if err := dx.On[Account](txCtx).WithID(fromID).Update("balance", fromBalance - amount); err != nil {
         return err
     }
-    if err := tx.Where("id", toID).Update("balance", gorm.Expr("balance + ?", amount)); err != nil {
+    if err := dx.On[Account](txCtx).WithID(toID).Update("balance", toBalance + amount); err != nil {
         return err
     }
     return nil
@@ -172,7 +234,7 @@ err := dx.On().Transaction(func(tx *dx.Engine) error {
 
 ### 2.3 `cache` — Multi-Level Caching & Anti-Stampede
 
-Supports `Memory`, `Redis`, `Sqlite`, and `Json` cache drivers with seamless unified APIs.
+Supports `Memory`, `Redis`, `Sqlite`, and `Json` cache drivers with unified APIs.
 
 #### Anti-Stampede Singleflight (`Remember`)
 Use `cache.Remember` for cache-aside patterns. It leverages singleflight to prevent cache penetration, avalanche, and breakdown:
@@ -181,8 +243,8 @@ func (s *UserService) GetUserCached(ctx context.Context, userID int64) (*UserDTO
     cacheKey := fmt.Sprintf("user:info:%d", userID)
     
     return cache.Remember[UserDTO](ctx, cacheKey, 30*time.Minute, func() (UserDTO, error) {
-        var user model.User
-        if err := dx.On().Where("id", userID).First(&user); err != nil {
+        user, err := dx.On[model.User](ctx).WithID(userID).FirstData()
+        if err != nil {
             return UserDTO{}, err
         }
         return toDTO(user), nil
@@ -194,7 +256,6 @@ func (s *UserService) GetUserCached(ctx context.Context, userID int64) (*UserDTO
 ```go
 // Distributed lock with execution callback
 err := cache.WithLock(ctx, "lock:order:create:1001", 10*time.Second, func() error {
-    // Critical section
     return s.processOrder(ctx, 1001)
 })
 
@@ -220,8 +281,6 @@ res, err := httpx.PostJSON[CreateResult](ctx, "https://api.example.com/items", p
 ```
 
 #### Server-Sent Events (SSE) for AI & Streaming
-Use `ssex` for LLM token streaming, notification feeds, or live dashboards:
-
 ```go
 func (ctrl *ChatController) StreamChat(c *gin.Context) {
     streamer := ssex.NewStreamer(c)
@@ -233,25 +292,11 @@ func (ctrl *ChatController) StreamChat(c *gin.Context) {
     }
     _ = streamer.PushDone()
 }
-
-// SSE with automatic heartbeat keeper
-func (ctrl *MonitorController) LiveMetrics(c *gin.Context) {
-    ssex.StreamWithHeartbeat(c, 15*time.Second, func(s *ssex.Streamer) error {
-        for metric := range metricsChan {
-            if err := s.PushJSON(metric); err != nil {
-                return err
-            }
-        }
-        return nil
-    })
-}
 ```
 
 ---
 
 ### 2.5 `cronx` — Distributed & Local Scheduler
-
-Supports standard cron expressions, fixed intervals, delay jobs, and Redis-backed distributed leasing:
 
 ```go
 // 1. Standard Cron Task
@@ -295,7 +340,6 @@ authGroup.Use(tokenx.AuthMiddleware())
 func (ctrl *AdminController) GetProfile(c *gin.Context) {
     userID := tokenx.GetUserID(c)
     claims, err := tokenx.GetClaims[map[string]any](c)
-    // ...
 }
 
 // 4. Logout / Revoke Token (Blacklist)
@@ -309,8 +353,6 @@ func (ctrl *AuthController) Logout(c *gin.Context) {
 ---
 
 ### 2.7 `mid/messagex` — Pub/Sub Event Bus
-
-Supports in-memory and Redis distributed event brokers with typed payload serialization:
 
 ```go
 type OrderPaidEvent struct {
@@ -337,8 +379,6 @@ messagex.SubscribeEvent[OrderPaidEvent](ctx, "order.paid", func(ctx context.Cont
 
 ### 2.8 `storage` — Unified Object Storage
 
-Provides unified abstraction over Local Disk, AWS S3, Aliyun OSS, and MinIO:
-
 ```go
 // Direct String/Bytes/File upload
 url, err := storage.SaveString(ctx, "articles/2026/intro.md", markdownContent)
@@ -362,9 +402,9 @@ signedURL, err := storage.GetPresignedURL(ctx, "backups/db.sql", 15*time.Minute)
 logger.Info(ctx, "Order processed", "order_id", 1001, "latency_ms", 45)
 logger.Error(ctx, "Failed to connect payment gateway", "err", err)
 
-// Strongly Typed Configuration
-port := cofigure.Get[int]("server.port", 8080)
-dbName := cofigure.Get[string]("database.mysql.name", "main")
+// Layered Configuration (snake_case in YAML)
+port := configure.GetInt("api.rest.addr")
+sysName := configure.GetString("sys.name", "APP")
 
 // Password Hashing & Encryption
 hash, err := encrypt.BcryptHash("user_password")
@@ -372,23 +412,25 @@ valid := encrypt.BcryptVerify("user_password", hash)
 encryptedText, err := encrypt.AESEncrypt("sensitive_token", aesKey)
 
 // Business Error Definition
-return errors.NewBizError(40001, "Account balance insufficient")
-
-// Multi-Channel Instant Alerting (DingTalk, Feishu, WeChat Work)
-alert.Send(ctx, "Database Connection Spike", "Active connections exceeded 90% threshold.")
+return errors.Verify("Account balance insufficient")
 ```
 
 ---
 
-## 3. AI Agent Quality Standards & Rules
+## 3. AI Agent Quality Standards & Execution Rules
 
-1. **Clean Code & Modern Go Idioms**:
-   - Always use generics (`apix.BindReq[T]`, `cache.Remember[T]`, `dx.Paginate[T]`, `messagex.SubscribeEvent[T]`).
-   - Do not write legacy shims, fallback compatibility branches, or redundant type assertions.
-2. **No Test File Persistence Rule**:
+1. **Scaffolding & Module Creation Priority (`gorig_gen_cli` 优先原则)**:
+   - When initializing a project or creating a new module, **always prioritize running `gorig_gen_cli` commands** (`npx gorig_gen_cli@latest init <project>` / `npx gorig_gen_cli@latest create <module>`) over manual boilerplate assembly.
+2. **Clean Code & Modern Go Idioms**:
+   - Always use generics (`apix.BindReq[T]`, `cache.Remember[T]`, `dx.On[T]`, `messagex.SubscribeEvent[T]`).
+   - Do not write legacy shims, fallback compatibility branches, or redundant dirty data logic.
+3. **Configuration Standard**:
+   - YAML configuration definitions must follow **lowercase snake_case** (`mysql.main.write.host`, `mysql.main.gorm_init`, `mysql.main.slow_threshold`, `mysql.main.write.max_idle_conns`, `mysql.main.write.max_open_conns`, `mysql.main.write.conn_max_lifetime`).
+   - `dbname` must use the unexported constant `defaultDBName = "main"`, avoiding hardcoded exported constants.
+4. **No Test File Persistence Rule (严禁持久保留测试文件)**:
    - Do NOT commit or leave temporary `*_test.go` files unless explicitly requested by the user.
    - Verify code using `go fmt ./...`, `go vet ./...`, and `go build ./...`.
-3. **Layer Separation Guarantee**:
+5. **Layer Separation Guarantee**:
    - Controllers only handle HTTP translation (`apix.BindReq`, calling service, returning `apix.Ok`/`apix.Err`).
    - Business logic, caching, transactions, and event emissions stay strictly in Services.
-   - Database queries stay in Services or Model repositories using `dx.On()`.
+   - Database queries stay in Services using `dx.On[T](ctx)`.

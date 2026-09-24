@@ -40,7 +40,8 @@ Gorig 关注完整后端生命周期，而不是单个脚手架命令。
 | 项目 | 角色 |
 |---|---|
 | `gorig` | 核心 Go 后端框架：HTTP 路由、泛型参数绑定（`apix`）、链式 ORM（`dx`）、多级缓存、分布式定时任务、鉴权、事件总线、SSE 与对象存储。 |
-| `gorig-agent` | AI Agent 交付指南与 Skill：源码感知的实现规范、架构分层约束、API 调用范式与工程质量标准。 |
+| `gorig_gen_cli` | 官方脚手架与代码生成 CLI 工具：基于 DDD 架构一键初始化项目骨架、创建业务领域模块、OpenAPI 文档生成与 ReDoc 预览。 |
+| `gorig-agent` | AI Agent 交付指南与 Skill：源码感知的实现规范、架构分层约束、脚手架优先调用规范与工程质量标准。 |
 | `gorig-om` | 运维管理与可观测性面板：服务状态、运行指标、日志检索、异常签名归类、协程趋势与内存诊断。 |
 
 ## 快速开始
@@ -69,13 +70,13 @@ cd my-new-project
 go run _cmd/main.go
 ```
 
-### 添加模块
+### 添加业务模块
 
 ```sh
 npx gorig_gen_cli@latest create user
 ```
 
-生成的模块采用外层 API 与内层 DDD 领域解耦设计：
+生成的模块采用外层 API 与内层 DDD 领域解耦设计，并自动在 `api/init.go` 与 `domain/init.go` 完成路由注册与模型迁移：
 
 ```text
 ├── api/user/
@@ -87,39 +88,51 @@ npx gorig_gen_cli@latest create user
     └── service.go        # 领域核心业务逻辑 (dx ORM 操作)
 ```
 
-### 生成持久化 CRUD
-
-需要数据库 CRUD 时，显式选择存储后端：
+### 生成与预览 API 文档
 
 ```sh
-npx gorig-cli@latest create order --crud --db mysql --db-name Main
-npx gorig-cli@latest create order --crud --db mongo --db-name main
+npx gorig_gen_cli@latest doc
 ```
-
-CRUD 生成器会创建 service/model 逻辑、可选 HTTP 路由、校验测试、模块文档、API 文档和非敏感配置骨架。
 
 ## 配合 AI Agent 使用
 
-当你希望 AI Agent（Codex、Claude、Antigravity 等）按 Gorig 框架规则工作，而不是泛泛生成后端代码时，可以安装随 CLI 分发的 `gorig-agent` Skill。
+当你希望 AI Agent（Claude Code、Codex、Cursor、Antigravity 等）按 Gorig 框架规范高保真交付后端代码时，可以直接载入框架官方维护的 `gorig-agent` Skill。
 
+### 安装与启用 Skill
+
+**方式 1：CLI 一键安装（推荐，免拉取源码）**
 ```sh
-npx gorig-cli@latest skill install codex
-npx gorig-cli@latest skill install all
-npx gorig-cli@latest skill install codex project
+# 一键安装到当前项目与本机所有 AI Agent 配置目录（Antigravity / Claude Code / Codex 等）：
+npx gorig_gen_cli@latest skill
+
+# 或安装至指定 Agent / 全局目录：
+npx gorig_gen_cli@latest skill install antigravity  # 安装到 Google Antigravity (~/.gemini/antigravity/skills/)
+npx gorig_gen_cli@latest skill install claude       # 安装到 Claude Code (~/.claude/skills/)
+npx gorig_gen_cli@latest skill install project      # 仅安装到当前项目 (.agent/skills/ 与 .claude/skills/)
+npx gorig_gen_cli@latest skill install global       # 安装到本机所有 Agent 全局目录
 ```
 
-然后用产品语言提出需求：
+> **提示**：使用 `npx gorig_gen_cli@latest init <project-name>` 创建的新项目已默认内置 `.agent/skills/gorig-agent/SKILL.md` 与 `AGENTS.md`，开箱即用。
+
+### Agent 核心交付规则
+1. **脚手架优先**：AI Agent 初始化项目或创建新模块时，**优先直接执行 `gorig_gen_cli` CLI 命令**（`npx gorig_gen_cli@latest init <project>` / `npx gorig_gen_cli@latest create <module>`），自动完成目录分层与 `init.go` 注册。
+2. **分层边界约束**：严格保持 `Router -> Controller -> Service -> Model/DX` 四层边界；控制器只做泛型入参解析与响应，业务与事务在 Service 层。
+3. **测试不留存规范**：日常验证优先使用 `go vet ./...` 与 `go build ./...`，禁止在仓库中遗留未要求的测试文件。
+
+### 交互指令示例
+
+用业务语言直接向 AI Agent 提出需求：
 
 ```text
-使用 gorig-agent skill，创建一个客户管理后端，包含 CRUD 接口、MySQL 持久化、测试和 API 文档。
+使用 gorig-agent skill，使用 gorig_gen_cli 初始化项目并创建 order 模块，实现订单创建、支付状态流转与分页查询。
 ```
 
 ```text
-使用 gorig-agent skill，为这个 Gorig 服务增加登录、受保护路由、Token 刷新、退出登录和安全测试。
+使用 gorig-agent skill，为 user 模块增加基于 tokenx 的登录认证、Token 刷新以及受保护路由中间件。
 ```
 
 ```text
-使用 gorig-agent skill，把这个服务整理到可部署状态：补充健康检查、结构化日志、发布目录和回滚步骤。
+使用 gorig-agent skill，接入 cronx 实现每日凌晨 3 点自动归档过期数据的分布式定时任务。
 ```
 
 ## 核心功能模块与使用示例

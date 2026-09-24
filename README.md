@@ -40,7 +40,8 @@ Gorig is designed around the full backend lifecycle, not a single scaffolding co
 | Project | Role |
 |---|---|
 | `gorig` | Core Go backend framework: HTTP routing, generic request binding (`apix`), fluent ORM (`dx`), multi-level cache, distributed cron, auth, messaging, SSE, and storage. |
-| `gorig-agent` | AI Agent delivery skill: framework-aware implementation rules, layer boundaries, source patterns, and standard engineering guidelines. |
+| `gorig_gen_cli` | Official scaffolding & code generation CLI tool: DDD-based project scaffolding, domain module creation, OpenAPI spec generation & ReDoc preview. |
+| `gorig-agent` | AI Agent delivery skill: framework-aware implementation rules, layer boundaries, CLI scaffolding priority, and engineering guidelines. |
 | `gorig-om` | Operations & Observability platform: service status, runtime metrics, logs, error signatures, goroutine trends, and memory diagnostics. |
 
 ## Quick Start
@@ -69,57 +70,69 @@ cd my-new-project
 go run _cmd/main.go
 ```
 
-### Add a Module
+### Add a Business Module
 
 ```sh
 npx gorig_gen_cli@latest create user
 ```
 
-This creates the outer API layer and inner DDD domain layer:
+This creates the outer API layer and inner DDD domain layer, and auto-registers them in `api/init.go` and `domain/init.go`:
 
 ```text
 ├── api/user/
-│   ├── controller.go
-│   └── router.go
+│   ├── controller.go     # HTTP Controller (apix.BindReq generic binding)
+│   └── router.go         # Route group registration
 └── domain/user/
-    ├── dto.go
-    ├── model.go
-    └── service.go
+    ├── dto.go            # Request, Response, and Filter DTOs
+    ├── model.go          # Data entity model & AutoMigrate
+    └── service.go        # Domain business logic (dx ORM operations)
 ```
 
-### Generate Persistent CRUD
-
-Choose the storage backend explicitly when you want database-backed CRUD:
+### Generate and Preview API Documentation
 
 ```sh
-npx gorig-cli@latest create order --crud --db mysql --db-name Main
-npx gorig-cli@latest create order --crud --db mongo --db-name main
+npx gorig_gen_cli@latest doc
 ```
-
-The CRUD generator creates service/model logic, optional HTTP routes, validation tests, module docs, API docs, and non-secret configuration skeletons.
 
 ## Use with AI Agents
 
-Install the bundled `gorig-agent` skill when you want AI agents (Codex, Claude, Antigravity) to work with Gorig projects using framework-aware rules instead of generic backend generation.
+When you want AI agents (Claude Code, Codex, Cursor, Antigravity) to deliver backend applications following Gorig standards, load the official `gorig-agent` Skill.
 
+### Install & Enable Skill
+
+**Option 1: One-Click CLI Installation (Recommended, no repo clone needed)**
 ```sh
-npx gorig-cli@latest skill install codex
-npx gorig-cli@latest skill install all
-npx gorig-cli@latest skill install codex project
+# Install to current project and all local AI Agent directories (Antigravity / Claude Code / Codex / Cursor):
+npx gorig_gen_cli@latest skill
+
+# Or install to specific Agent / Global directories:
+npx gorig_gen_cli@latest skill install antigravity  # Install to Google Antigravity (~/.gemini/antigravity/skills/)
+npx gorig_gen_cli@latest skill install claude       # Install to Claude Code (~/.claude/skills/)
+npx gorig_gen_cli@latest skill install project      # Install to current project only (.agent/skills/ and .claude/skills/)
+npx gorig_gen_cli@latest skill install global       # Install to all global Agent directories on the machine
 ```
 
-Then ask for backend work in product language:
+> **Tip**: Projects created with `npx gorig_gen_cli@latest init <project-name>` already include `.agent/skills/gorig-agent/SKILL.md` and `AGENTS.md` by default.
+
+### Core Agent Delivery Rules
+1. **Scaffolding Priority**: When initializing a project or creating a new module, **prioritize directly executing `gorig_gen_cli` CLI commands** (`npx gorig_gen_cli@latest init <project>` / `npx gorig_gen_cli@latest create <module>`) to establish DDD boundaries and automatic registration.
+2. **Layer Separation**: Preserve strict `Router -> Controller -> Service -> Model/DX` boundaries; controllers handle HTTP translation and validation, while services orchestrate business logic and transactions.
+3. **No Persistent Test Files**: Verify with `go vet ./...` and `go build ./...`; do not leave temporary test files in the repository unless explicitly requested.
+
+### Prompt Examples
+
+Ask for backend work in product language:
 
 ```text
-Use the gorig-agent skill to create a customer management backend with CRUD APIs, MySQL persistence, tests, and API docs.
+Use the gorig-agent skill and gorig_gen_cli to initialize the project and create an order module with creation, status lifecycle, and pagination.
 ```
 
 ```text
-Use the gorig-agent skill to add login, protected routes, token refresh, logout, and security tests to this Gorig service.
+Use the gorig-agent skill to add tokenx-based JWT authentication, token refresh, and auth middleware to the user module.
 ```
 
 ```text
-Use the gorig-agent skill to prepare this service for deployment with health checks, structured logs, release layout, and rollback steps.
+Use the gorig-agent skill to set up cronx distributed cron jobs for nightly data archiving at 03:00 AM.
 ```
 
 ## Functional Modules & Demos

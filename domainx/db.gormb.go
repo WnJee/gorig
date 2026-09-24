@@ -28,11 +28,10 @@ var gormDbMysqlMap = make(map[string]*gorm.DB)
 var gormDbMysqlMu sync.RWMutex
 
 func UseDbConn(dbname string) *gorm.DB {
+	dbname = strings.ToLower(strings.TrimSpace(dbname))
 	if dbname == "" {
-		logger.Logger.Error(fmt.Sprintf(errc.ErrorsDBInitFail, Mysql))
-		return nil
+		dbname = defaultDBName
 	}
-	dbname = strings.ToLower(dbname)
 	gormDbMysqlMu.RLock()
 	defer gormDbMysqlMu.RUnlock()
 	if _, ok := gormDbMysqlMap[dbname]; !ok {
@@ -44,10 +43,10 @@ func UseDbConn(dbname string) *gorm.DB {
 
 func (*gormDBService) Start() error {
 	sys.Info(" * DB service startup on: ", Mysql)
-	sub := configure.GetSub("Mysql")
+	sub := configure.GetSub("mysql")
 	if len(sub) > 0 {
 		for k, _ := range sub {
-			if configure.GetInt("Mysql."+k+".GormInit") == 1 {
+			if configure.GetInt("mysql."+k+".gorm_init") == 1 {
 				sys.Info(" * Init mysql db: ", k)
 				initMysqlDB(k)
 			}
@@ -104,7 +103,7 @@ func initMysqlDB(dbname ...string) {
 	if len(dbname) > 0 {
 		for _, v := range dbname {
 			if dbMysql, err := gormt.GetOneMysqlClient(v); err != nil {
-				logger.Logger.Fatal(fmt.Sprintf("Mysql."+v+" init fail: %s", err.Error()))
+				logger.Logger.Fatal(fmt.Sprintf("mysql."+v+" init fail: %s", err.Error()))
 			} else {
 				gormDbMysqlMu.Lock()
 				gormDbMysqlMap[strings.ToLower(v)] = dbMysql

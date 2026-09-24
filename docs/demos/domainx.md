@@ -130,14 +130,14 @@ func ListUsers(ctx *gin.Context) {
 ## 5. 事务管理 (Transaction)
 
 ```go
-err := domainx.Transaction(ctx, "main", func(txCtx context.Context) *errors.Error {
+err := domainx.Transaction(ctx, func(txCtx context.Context) error {
     // 传入 txCtx，dx 自动使用当前事务上下文
     _, err := dx.On[User](txCtx, user1).Save()
     if err != nil {
         return err
     }
 
-    _, err = dx.On[Account](txCtx).WithID(user1.ID.Int64()).Update("balance", 1000)
+    err = dx.On[Account](txCtx).WithID(user1.ID.Int64()).Update("balance", 1000)
     if err != nil {
         return err
     }

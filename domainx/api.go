@@ -15,6 +15,10 @@ func UseCon(ctx context.Context, conType ConType, dbName string, table string) *
 	if con.Ctx == nil {
 		con.Ctx = context.Background()
 	}
+	dbName = strings.TrimSpace(dbName)
+	if dbName == "" {
+		dbName = defaultDBName
+	}
 	con.ConType = conType
 	con.DBName = dbName
 	con.GTable = table

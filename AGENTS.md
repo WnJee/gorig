@@ -14,9 +14,10 @@
 - `serv/` Service entry points; `simple/` runnable example.
 - `skills/gorig-agent/` AI Agent Skill definition and comprehensive implementation standard.
 
-## AI Agent Skill
+## AI Agent Skill & Scaffolding
 - The repository provides the official `gorig-agent` skill in `skills/gorig-agent/SKILL.md`.
-- AI agents should reference this skill when scaffolding new modules or implementing business logic.
+- **Scaffolding & Module Creation Priority**: When initializing a project or creating a new business domain module, AI agents MUST prioritize directly running `gorig_gen_cli` commands (`npx gorig_gen_cli@latest init <project>` / `npx gorig_gen_cli@latest create <module>`) over manual file creation.
+- AI agents should reference `skills/gorig-agent/SKILL.md` when implementing business logic and framework features.
 
 ## Build, Verification, and Development Commands
 - Run example: `go run ./simple`

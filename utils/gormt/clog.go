@@ -23,8 +23,15 @@ func createCustomGormLog(sqlType string, options ...Options) gormLog.Interface {
 		traceWarnStr = "%s %s\n[%.3fms] [rows:%v] %s"
 		traceErrStr  = "%s %s\n[%.3fms] [rows:%v] %s"
 	)
+	slowThreshold := configure.GetDuration(sqlType + ".slow_threshold")
+	if slowThreshold == 0 {
+		slowThreshold = configure.GetDuration("mysql." + sqlType + ".slow_threshold")
+	}
+	if slowThreshold == 0 {
+		slowThreshold = configure.GetDuration("mysql.slow_threshold", 2)
+	}
 	logConf := gormLog.Config{
-		SlowThreshold: time.Second * configure.GetDuration(sqlType+".SlowThreshold"),
+		SlowThreshold: time.Second * slowThreshold,
 		LogLevel:      gormLog.Warn,
 		Colorful:      false,
 	}

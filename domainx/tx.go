@@ -20,7 +20,7 @@ func GetTxFromContext(ctx context.Context, dbName string) *gorm.DB {
 	}
 	dbName = strings.ToLower(strings.TrimSpace(dbName))
 	if dbName == "" {
-		dbName = "main"
+		dbName = defaultDBName
 	}
 	val := ctx.Value(txCtxKey{dbName: dbName})
 	if tx, ok := val.(*gorm.DB); ok && tx != nil {
@@ -36,7 +36,7 @@ func WithTx(ctx context.Context, dbName string, tx *gorm.DB) context.Context {
 	}
 	dbName = strings.ToLower(strings.TrimSpace(dbName))
 	if dbName == "" {
-		dbName = "main"
+		dbName = defaultDBName
 	}
 	return context.WithValue(ctx, txCtxKey{dbName: dbName}, tx)
 }
@@ -45,7 +45,7 @@ func WithTx(ctx context.Context, dbName string, tx *gorm.DB) context.Context {
 // If the context already contains an active transaction for the same database, it reuses it (nested/propagation support).
 // If fn returns an error, the transaction is rolled back; otherwise it is committed.
 func Transaction(ctx context.Context, fn func(txCtx context.Context) error, dbNames ...string) error {
-	dbName := "main"
+	dbName := defaultDBName
 	if len(dbNames) > 0 && strings.TrimSpace(dbNames[0]) != "" {
 		dbName = dbNames[0]
 	}

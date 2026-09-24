@@ -7,6 +7,8 @@ const (
 	Mongo ConType = "mongo"
 )
 
+const defaultDBName = "main"
+
 func (c ConType) String() string {
 	return string(c)
 }
@@ -27,7 +29,7 @@ func (c *Con) GetConStr() string {
 	}
 	switch c.GetConType() {
 	case Mysql:
-		return "Mysql"
+		return "mysql"
 	case Mongo:
 		return "mongo"
 	}

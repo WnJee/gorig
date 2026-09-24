@@ -17,8 +17,8 @@ import (
 
 // GetOneMysqlClient 获取一个 mysql 客户端
 func GetOneMysqlClient(sqlName string) (*gorm.DB, error) {
-	sqlType := "Mysql"
-	readDbIsOpen := configure.GetInt(sqlType + "." + sqlName + ".IsOpenReadDb")
+	sqlType := "mysql"
+	readDbIsOpen := configure.GetInt(sqlType + "." + sqlName + ".is_open_read_db")
 	return GetSqlDriver(sqlType, sqlName, readDbIsOpen)
 }
 
@@ -26,7 +26,7 @@ func GetOneMysqlClient(sqlName string) (*gorm.DB, error) {
 func GetSqlDriver(sqlType string, sqlName string, readDbIsOpen int, dbConf ...ConfigParams) (*gorm.DB, error) {
 
 	var dbDialector gorm.Dialector
-	if val, err := getDbDialector(sqlType, sqlName, "Write", dbConf...); err != nil {
+	if val, err := getDbDialector(sqlType, sqlName, "write", dbConf...); err != nil {
 		logger.Logger.Error(errc.ErrorsDialectorDbInitFail+sqlType, zap.Error(err))
 		return nil, err
 	} else {
@@ -45,7 +45,7 @@ func GetSqlDriver(sqlType string, sqlName string, readDbIsOpen int, dbConf ...Co
 	// 如果开启了读写分离，配置读数据库（resource、read、replicas）
 	// 读写分离配置只
 	if readDbIsOpen == 1 {
-		if val, err := getDbDialector(sqlType, sqlName, "Read", dbConf...); err != nil {
+		if val, err := getDbDialector(sqlType, sqlName, "read", dbConf...); err != nil {
 			logger.Logger.Error(errc.ErrorsDialectorDbInitFail+sqlType, zap.Error(err))
 		} else {
 			dbDialector = val
@@ -54,10 +54,11 @@ func GetSqlDriver(sqlType string, sqlName string, readDbIsOpen int, dbConf ...Co
 			Replicas: []gorm.Dialector{dbDialector}, //  读 操作库，查询类
 			Policy:   dbresolver.RandomPolicy{},     // sources/replicas 负载均衡策略适用于
 		}
+		readPrefix := sqlType + "." + sqlName + ".read"
 		err = gormDb.Use(dbresolver.Register(resolverConf).SetConnMaxIdleTime(time.Second * 30).
-			SetConnMaxLifetime(configure.GetDuration(sqlName+".Read.SetConnMaxLifetime") * time.Second).
-			SetMaxIdleConns(configure.GetInt(sqlName + ".Read.SetMaxIdleConns")).
-			SetMaxOpenConns(configure.GetInt(sqlName + ".Read.SetMaxOpenConns")))
+			SetConnMaxLifetime(configure.GetDuration(readPrefix+".conn_max_lifetime") * time.Second).
+			SetMaxIdleConns(configure.GetInt(readPrefix + ".max_idle_conns")).
+			SetMaxOpenConns(configure.GetInt(readPrefix + ".max_open_conns")))
 		if err != nil {
 			return nil, err
 		}
@@ -76,11 +77,11 @@ func GetSqlDriver(sqlType string, sqlName string, readDbIsOpen int, dbConf ...Co
 	if rawDb, err := gormDb.DB(); err != nil {
 		return nil, err
 	} else {
+		writePrefix := sqlType + "." + sqlName + ".write"
 		rawDb.SetConnMaxIdleTime(time.Second * 30)
-		rawDb.SetConnMaxLifetime(configure.GetDuration(sqlName+".Write.SetConnMaxLifetime") * time.Second)
-		rawDb.SetConnMaxLifetime(configure.GetDuration(sqlName+".Write.SetConnMaxLifetime") * time.Second)
-		rawDb.SetMaxIdleConns(configure.GetInt(sqlName + ".Write.SetMaxIdleConns"))
-		rawDb.SetMaxOpenConns(configure.GetInt(sqlName + ".Write.SetMaxOpenConns"))
+		rawDb.SetConnMaxLifetime(configure.GetDuration(writePrefix+".conn_max_lifetime") * time.Second)
+		rawDb.SetMaxIdleConns(configure.GetInt(writePrefix + ".max_idle_conns"))
+		rawDb.SetMaxOpenConns(configure.GetInt(writePrefix + ".max_open_conns"))
 		return gormDb, nil
 	}
 }
@@ -105,62 +106,62 @@ func getDbDialector(sqlType, sqlName, readWrite string, dbConf ...ConfigParams) 
 // 根据配置参数生成数据库驱动 dsn
 func getDsn(sqlType, sqlName, readWrite string, dbConf ...ConfigParams) string {
 	prefix := sqlType + "." + sqlName + "." + readWrite
-	Host := configure.GetString(prefix + ".Host")
-	DataBase := configure.GetString(prefix + ".DataBase")
-	Port := configure.GetInt(prefix + ".Port")
-	User := configure.GetString(prefix + ".User")
-	Pass := configure.GetString(prefix + ".Pass")
-	Charset := configure.GetString(prefix + ".Charset")
+	host := configure.GetString(prefix + ".host")
+	database := configure.GetString(prefix + ".database")
+	port := configure.GetInt(prefix + ".port")
+	user := configure.GetString(prefix + ".user")
+	pass := configure.GetString(prefix + ".pass")
+	charset := configure.GetString(prefix + ".charset", "utf8mb4")
 
 	if len(dbConf) > 0 {
 		if strings.ToLower(readWrite) == "write" {
 			if len(dbConf[0].Write.Host) > 0 {
-				Host = dbConf[0].Write.Host
+				host = dbConf[0].Write.Host
 			}
 			if len(dbConf[0].Write.DataBase) > 0 {
-				DataBase = dbConf[0].Write.DataBase
+				database = dbConf[0].Write.DataBase
 			}
 			if dbConf[0].Write.Port > 0 {
-				Port = dbConf[0].Write.Port
+				port = dbConf[0].Write.Port
 			}
 			if len(dbConf[0].Write.User) > 0 {
-				User = dbConf[0].Write.User
+				user = dbConf[0].Write.User
 			}
 			if len(dbConf[0].Write.Pass) > 0 {
-				Pass = dbConf[0].Write.Pass
+				pass = dbConf[0].Write.Pass
 			}
 			if len(dbConf[0].Write.Charset) > 0 {
-				Charset = dbConf[0].Write.Charset
+				charset = dbConf[0].Write.Charset
 			}
 		} else {
 			if len(dbConf[0].Read.Host) > 0 {
-				Host = dbConf[0].Read.Host
+				host = dbConf[0].Read.Host
 			}
 			if len(dbConf[0].Read.DataBase) > 0 {
-				DataBase = dbConf[0].Read.DataBase
+				database = dbConf[0].Read.DataBase
 			}
 			if dbConf[0].Read.Port > 0 {
-				Port = dbConf[0].Read.Port
+				port = dbConf[0].Read.Port
 			}
 			if len(dbConf[0].Read.User) > 0 {
-				User = dbConf[0].Read.User
+				user = dbConf[0].Read.User
 			}
 			if len(dbConf[0].Read.Pass) > 0 {
-				Pass = dbConf[0].Read.Pass
+				pass = dbConf[0].Read.Pass
 			}
 			if len(dbConf[0].Read.Charset) > 0 {
-				Charset = dbConf[0].Read.Charset
+				charset = dbConf[0].Read.Charset
 			}
 		}
 	}
 
 	switch strings.ToLower(sqlType) {
 	case "mysql":
-		return fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=%s&parseTime=true&loc=Local", User, Pass, Host, Port, DataBase, Charset)
+		return fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=%s&parseTime=true&loc=Local", user, pass, host, port, database, charset)
 	case "sqlserver", "mssql":
-		return fmt.Sprintf("server=%s;port=%d;database=%s;user id=%s;password=%s;encrypt=disable", Host, Port, DataBase, User, Pass)
+		return fmt.Sprintf("server=%s;port=%d;database=%s;user id=%s;password=%s;encrypt=disable", host, port, database, user, pass)
 	case "postgresql", "postgre", "postgres":
-		return fmt.Sprintf("host=%s port=%d dbname=%s user=%s password=%s sslmode=disable TimeZone=Asia/Shanghai", Host, Port, DataBase, User, Pass)
+		return fmt.Sprintf("host=%s port=%d dbname=%s user=%s password=%s sslmode=disable TimeZone=Asia/Shanghai", host, port, database, user, pass)
 	}
 	return ""
 }
