@@ -96,7 +96,7 @@ var gConfigs = sync.Map{}
 
 var (
 	configName  string
-	configPaths = []string{"./_bin/", "./"}
+	configPaths = []string{"./_bin/", "./", "../_bin/", "../", "../../_bin/", "../../"}
 )
 
 func register(key string, val any) {

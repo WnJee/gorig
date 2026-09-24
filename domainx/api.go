@@ -20,6 +20,11 @@ func UseCon(ctx context.Context, conType ConType, dbName string, table string) *
 	con.GTable = table
 	switch conType {
 	case Mysql:
+		// Check if active transaction exists in context
+		if tx := GetTxFromContext(con.Ctx, dbName); tx != nil {
+			con.MysqlDB = tx
+			return con
+		}
 		if connDb := UseDbConn(dbName); connDb != nil {
 			con.MysqlDB = connDb
 			return con

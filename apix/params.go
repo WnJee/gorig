@@ -140,15 +140,22 @@ func BindParams(ctx *gin.Context, req interface{}, noPrint ...bool) (err *errors
 			response.ValidatorError(ctx, err)
 			return errors.Verify(fmt.Sprintf("BindParams: %v", err))
 		}
-		logger.Info(ctx, "BindParams", zap.Any("req", req))
-		return nil
+	} else {
+		if err := ctx.ShouldBind(req); err != nil {
+			ctx.Set(ErrorKey, fmt.Sprintf("BindParams: %v", err))
+			logger.Error(ctx, "BindParams", zap.Any("err", err))
+			response.ValidatorError(ctx, err)
+			return errors.Verify(fmt.Sprintf("BindParams: %v", err))
+		}
 	}
-	if err := ctx.ShouldBind(req); err != nil {
-		ctx.Set(ErrorKey, fmt.Sprintf("BindParams: %v", err))
-		logger.Error(ctx, "BindParams", zap.Any("err", err))
-		response.ValidatorError(ctx, err)
-		return errors.Verify(fmt.Sprintf("BindParams: %v", err))
+
+	if vErr := ValidateStruct(req); vErr != nil {
+		ctx.Set(ErrorKey, vErr.Error())
+		logger.Error(ctx, "BindParams validation", zap.Any("err", vErr))
+		response.ValidatorError(ctx, vErr)
+		return vErr
 	}
+
 	if len(noPrint) == 0 || !noPrint[0] {
 		logger.Info(ctx, "BindParams", zap.Any("req", req))
 	}

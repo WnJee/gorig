@@ -6,6 +6,7 @@ import (
 	"github.com/WnJee/gorig/apix/response"
 	_ "github.com/WnJee/gorig/domainx"
 	"github.com/WnJee/gorig/global/consts"
+	"github.com/WnJee/gorig/global/variable"
 	configure "github.com/WnJee/gorig/utils/cofigure"
 	"github.com/WnJee/gorig/utils/sys"
 	"github.com/gin-contrib/gzip"
@@ -115,6 +116,14 @@ func init() {
 	RegisterRouter(func(groupRouter *gin.RouterGroup) {
 		groupRouter.GET("ping", func(ctx *gin.Context) {
 			response.Success(ctx, consts.CurdStatusOkMsg, fmt.Sprintf("timestamp %d", time.Now().UnixMilli()))
+		})
+		groupRouter.GET("healthz", func(ctx *gin.Context) {
+			response.Success(ctx, consts.CurdStatusOkMsg, gin.H{
+				"status": "UP",
+				"time":   time.Now().Format(time.RFC3339),
+				"sys":    variable.SysName,
+				"mode":   sys.RunMode,
+			})
 		})
 	})
 }
