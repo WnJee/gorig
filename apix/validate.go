@@ -11,16 +11,14 @@ import (
 )
 
 var (
-	validateInstance *validator.Validate
-	validateOnce     sync.Once
+	bindingValidator  *validator.Validate
+	validateValidator *validator.Validate
+	validateOnce      sync.Once
 )
 
-// GetValidator returns the global validator instance
-func GetValidator() *validator.Validate {
+func initValidators() {
 	validateOnce.Do(func() {
-		validateInstance = validator.New()
-		// Use json tag or form tag for field names in validation error messages
-		validateInstance.RegisterTagNameFunc(func(fld reflect.StructField) string {
+		tagNameFunc := func(fld reflect.StructField) string {
 			name := strings.SplitN(fld.Tag.Get("json"), ",", 2)[0]
 			if name == "-" {
 				return ""
@@ -32,12 +30,26 @@ func GetValidator() *validator.Validate {
 				name = fld.Name
 			}
 			return name
-		})
+		}
+
+		// Gin convention: binding:"..."
+		bindingValidator = validator.New()
+		bindingValidator.SetTagName("binding")
+		bindingValidator.RegisterTagNameFunc(tagNameFunc)
+
+		// Standard Go validator convention: validate:"..."
+		validateValidator = validator.New()
+		validateValidator.RegisterTagNameFunc(tagNameFunc)
 	})
-	return validateInstance
 }
 
-// ValidateStruct validates a struct using validation tags (validate:"..." and binding:"...")
+// GetValidator returns the global validator instance (defaults to binding tag)
+func GetValidator() *validator.Validate {
+	initValidators()
+	return bindingValidator
+}
+
+// ValidateStruct validates a struct using validation tags (supports both binding:"..." and validate:"...")
 func ValidateStruct(obj interface{}) *errors.Error {
 	if obj == nil {
 		return nil
@@ -53,12 +65,26 @@ func ValidateStruct(obj interface{}) *errors.Error {
 		return nil
 	}
 
-	v := GetValidator()
-	err := v.Struct(obj)
-	if err == nil {
-		return nil
+	initValidators()
+
+	// 1. Validate against Gin's binding tag
+	if err := bindingValidator.Struct(obj); err != nil {
+		if formatted := formatValidationError(err); formatted != nil {
+			return formatted
+		}
 	}
 
+	// 2. Validate against standard validate tag
+	if err := validateValidator.Struct(obj); err != nil {
+		if formatted := formatValidationError(err); formatted != nil {
+			return formatted
+		}
+	}
+
+	return nil
+}
+
+func formatValidationError(err error) *errors.Error {
 	if validationErrs, ok := err.(validator.ValidationErrors); ok {
 		var errMsgs []string
 		for _, e := range validationErrs {
