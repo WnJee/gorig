@@ -61,14 +61,17 @@ type (
 		Updates(data map[string]interface{}) *errors.Error
 		Delete() *errors.Error
 		First() (*domainx.Complex[T], *errors.Error)
+		FirstData() (*T, *errors.Error)
 		Get() (*domainx.Complex[T], *errors.Error)
 		Find() (domainx.ComplexList[T], *errors.Error)
+		FindData() ([]*T, *errors.Error)
 		FindEach(handle func(*domainx.Complex[T]) *errors.Error) *errors.Error
 		AllEach(handle func(*domainx.Complex[T]) *errors.Error) *errors.Error
 		Count() (int64, *errors.Error)
 		Exists() (bool, *errors.Error)
 		Sum(field string) (float64, *errors.Error)
 		Page(page, size int64, lastID ...int64) (*load.PageRespT[*domainx.Complex[T]], *errors.Error)
+		PageData(page, size int64, lastID ...int64) (*load.PageRespT[*T], *errors.Error)
 	}
 )
 
@@ -357,6 +360,17 @@ func (d *dx[T]) First() (*domainx.Complex[T], *errors.Error) {
 	return d.Get()
 }
 
+func (d *dx[T]) FirstData() (*T, *errors.Error) {
+	c, err := d.Get()
+	if err != nil {
+		return nil, err
+	}
+	if c == nil {
+		return nil, nil
+	}
+	return c.Data, nil
+}
+
 func (d *dx[T]) Get() (*domainx.Complex[T], *errors.Error) {
 	if err := d.ready(); err != nil {
 		return nil, err
@@ -392,6 +406,20 @@ func (d *dx[T]) Find() (domainx.ComplexList[T], *errors.Error) {
 		return nil, err
 	}
 	return result, nil
+}
+
+func (d *dx[T]) FindData() ([]*T, *errors.Error) {
+	list, err := d.Find()
+	if err != nil {
+		return nil, err
+	}
+	dataList := make([]*T, 0, len(list))
+	for _, item := range list {
+		if item != nil && item.Data != nil {
+			dataList = append(dataList, item.Data)
+		}
+	}
+	return dataList, nil
 }
 
 func (d *dx[T]) FindEach(handle func(*domainx.Complex[T]) *errors.Error) *errors.Error {
@@ -494,4 +522,27 @@ func (d *dx[T]) Page(page, size int64, lastID ...int64) (*load.PageRespT[*domain
 		return nil, err
 	}
 	return resp, nil
+}
+
+func (d *dx[T]) PageData(page, size int64, lastID ...int64) (*load.PageRespT[*T], *errors.Error) {
+	pResp, err := d.Page(page, size, lastID...)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]*T, 0)
+	if pResp != nil && pResp.Result != nil {
+		for _, c := range *pResp.Result {
+			if c != nil && c.Data != nil {
+				items = append(items, c.Data)
+			}
+		}
+	}
+	res := &load.PageRespT[*T]{
+		Page:   pResp.Page,
+		Size:   pResp.Size,
+		Total:  pResp.Total,
+		LastID: pResp.LastID,
+		Result: &items,
+	}
+	return res, nil
 }

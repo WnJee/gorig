@@ -125,6 +125,22 @@ Use the gorig-backend skill to add login, protected routes, token refresh, logou
 Use the gorig-backend skill to prepare this service for deployment with health checks, structured logs, release layout, and rollback steps.
 ```
 
+## Functional Modules & Demos
+
+Gorig provides clean, high-productivity modules for backend development. Explore practical guides and code demos for each package:
+
+| Package | Key Capabilities | Guide & Demos |
+|---|---|---|
+| **`apix`** | Route/Query/Form/JSON param extraction, generic `BindReq[T]`, unified responses, custom validators, panic/error recovery | [📘 apix Guide & Demos](docs/demos/apix.md) |
+| **`domainx / dx`** | Type-safe fluent ORM, multi-engine (MySQL, MongoDB, SQLite), auto Snowflake ID, transactions, pagination | [📘 domainx Guide & Demos](docs/demos/domainx.md) |
+| **`cache`** | Multi-level cache (Memory, Redis, SQLite, JSON), `Remember` anti-stampede Singleflight, distributed locks | [📘 cache Guide & Demos](docs/demos/cache.md) |
+| **`httpx` & `ssex`** | Gin engine management, security middlewares, generic HTTP client (`GetJSON`, `Post`), SSE streaming with heartbeat | [📘 httpx Guide & Demos](docs/demos/httpx.md) |
+| **`cronx`** | Standard Cron, interval tasks, delay tasks, Redis-backed persistent distributed tasks with auto-recovery | [📘 cronx Guide & Demos](docs/demos/cronx.md) |
+| **`mid/tokenx`** | JWT issuance & parsing, claims extraction, token revocation/blacklist, Memory/Redis storage | [📘 tokenx Guide & Demos](docs/demos/tokenx.md) |
+| **`mid/messagex`** | Event bus, local & Redis Pub/Sub, typed event pub/sub (`PublishEvent`, `SubscribeEvent`), DLQ replay | [📘 messagex Guide & Demos](docs/demos/messagex.md) |
+| **`storage`** | Unified object storage (Local, S3, OSS, MinIO), string/byte/file helpers, resumable upload, presigned URLs | [📘 storage Guide & Demos](docs/demos/storage.md) |
+| **`utils`** | Structured logging, YAML/env configuration, AES/Bcrypt encryption, error models, alert notifications (DingTalk/Feishu/WeCom) | [📘 utils Guide & Demos](docs/demos/utils.md) |
+
 ## Framework Installation
 
 If you only need the Go framework dependency:

@@ -125,6 +125,22 @@ npx gorig-cli@latest skill install codex project
 使用 gorig-backend skill，把这个服务整理到可部署状态：补充健康检查、结构化日志、发布目录和回滚步骤。
 ```
 
+## 核心功能模块与使用示例
+
+Gorig 提供了现代 Go 后端开发开箱即用的高生产力组件库。点击查看各模块的常用方法与业务场景 Demo：
+
+| 功能包 | 核心能力概述 | 场景指南与示例 |
+|---|---|---|
+| **`apix`** | Route/Query/Form/JSON 统一参数提取、泛型 `BindReq[T]` 结构体绑定与校验、标准响应、自定义校验器、Panic/错误自动告警 | [📘 apix 使用指南与示例](docs/demos/apix.md) |
+| **`domainx / dx`** | 类型安全链式 ORM、多引擎抽象（MySQL / Mongo / SQLite）、雪花算法主键、事务一致性、游标分页 | [📘 domainx 使用指南与示例](docs/demos/domainx.md) |
+| **`cache`** | 多级缓存（内存、Redis、SQLite、JSON）、`Remember` 防击穿 Singleflight 并发合并、分布式锁与重试 | [📘 cache 使用指南与示例](docs/demos/cache.md) |
+| **`httpx` & `ssex`** | Gin 服务引擎管理、工业级中间件、泛型 HTTP 客户端（`GetJSON` / `Post`）、SSE 大模型流式输出与心跳保活 | [📘 httpx 使用指南与示例](docs/demos/httpx.md) |
+| **`cronx`** | 标准 Cron 表达式、固定间隔周期任务、一次性延迟任务、Redis 分布式持久化定时任务与故障租约自愈 | [📘 cronx 使用指南与示例](docs/demos/cronx.md) |
+| **`mid/tokenx`** | JWT 令牌签发与解析、自定义 Claims 提取、Token 黑名单销毁、Memory/Redis 双存储后端 | [📘 tokenx 使用指南与示例](docs/demos/tokenx.md) |
+| **`mid/messagex`** | 事件发布/订阅总线、本地与 Redis 异步消息、强类型事件订阅（`PublishEvent` / `SubscribeEvent`）、死信重放 | [📘 messagex 使用指南与示例](docs/demos/messagex.md) |
+| **`storage`** | 统一对象存储抽象（本地磁盘、S3、阿里云 OSS、MinIO）、字符串/切片/文件流直传、分片断点续传、临时预签名 URL | [📘 storage 使用指南与示例](docs/demos/storage.md) |
+| **`utils`** | 结构化日志（`logger`）、分层配置（`cofigure`）、安全加解密（`encrypt`）、分级错误模型、多渠道报警（钉钉/飞书/企微） | [📘 utils 使用指南与示例](docs/demos/utils.md) |
+
 ## 框架依赖安装
 
 如果只需要 Go 框架依赖：

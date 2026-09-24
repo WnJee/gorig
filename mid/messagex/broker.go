@@ -111,6 +111,22 @@ func (m *Message) SetValue(key string, value interface{}) {
 	m.Content[key] = value
 }
 
+// Bind decodes message content into a typed struct pointer.
+func Bind[T any](m *Message) (*T, error) {
+	if m == nil || m.Content == nil {
+		return new(T), nil
+	}
+	b, err := json.Marshal(m.Content)
+	if err != nil {
+		return nil, err
+	}
+	result := new(T)
+	if err := json.Unmarshal(b, result); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
 func (m *Message) DeepCopy() *Message {
 	if m == nil {
 		return nil

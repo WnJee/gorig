@@ -213,6 +213,22 @@ func ExpireCtx(ctx context.Context, key string, expiration time.Duration) error 
 	return c.Expire(key, expiration)
 }
 
+// GetOrDefault retrieves a value from the default cache or returns defValue on error/miss.
+func GetOrDefault[T any](key string, defValue T) T {
+	val, err := Get[T](key)
+	if err != nil {
+		return defValue
+	}
+	return val
+}
+
+// GetOrSet retrieves a value or sets the default value if key misses.
+func GetOrSet[T any](key string, expiration time.Duration, defaultVal T) (T, error) {
+	return Remember[T](key, expiration, func() (T, error) {
+		return defaultVal, nil
+	})
+}
+
 // Remember retrieves data from the default cache. If cache misses, calls fallback,
 // caches the result with Singleflight protection to prevent cache stampedes, and returns it.
 func Remember[T any](key string, expiration time.Duration, fallback func() (T, error)) (T, error) {

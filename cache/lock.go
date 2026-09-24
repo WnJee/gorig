@@ -48,6 +48,16 @@ func WithLock(ctx context.Context, key string, ttl time.Duration, fn func() erro
 	return fn()
 }
 
+// WithLockTimeout executes fn while acquiring a lock with retry until timeout.
+func WithLockTimeout(ctx context.Context, key string, ttl, timeout time.Duration, fn func() error) error {
+	unlock, err := Lock(ctx, key, ttl, 50*time.Millisecond, timeout)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	return fn()
+}
+
 // TryLock attempts to acquire a lock on key immediately without blocking.
 // Returns an unlock function, a boolean indicating if lock was acquired, and any error encountered.
 func TryLock(ctx context.Context, key string, ttl time.Duration) (unlock func(), ok bool, err error) {

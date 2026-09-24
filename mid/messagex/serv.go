@@ -198,6 +198,30 @@ func PublishNewMsg[T any](ctx context.Context, topic any, content T, groupId ...
 	Ins(Local).PublishNewMsg(ctx, topic, content, groupId...)
 }
 
+// PublishEvent publishes a typed event payload to the given topic.
+func PublishEvent[T any](ctx context.Context, topic string, payload T, groupID ...string) *errors.Error {
+	PublishNewMsg(ctx, topic, payload, groupID...)
+	return nil
+}
+
+// SubscribeEvent subscribes to a topic with a strongly typed payload handler.
+func SubscribeEvent[T any](topic string, handler func(ctx context.Context, payload *T) error) (uint64, *errors.Error) {
+	return RegisterTopic(topic, func(msg *Message) *errors.Error {
+		payload, err := Bind[T](msg)
+		if err != nil {
+			return errors.Sys("unmarshal message payload failed", err)
+		}
+		c := msg.Ctx
+		if c == nil {
+			c = context.Background()
+		}
+		if hErr := handler(c, payload); hErr != nil {
+			return errors.Verify(hErr.Error())
+		}
+		return nil
+	})
+}
+
 const (
 	MsgStartup = "messagex.startup"
 )

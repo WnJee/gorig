@@ -153,6 +153,66 @@ func AddOnceTask(runAt time.Time, f func(ctx context.Context), timeout ...time.D
 	c.Start()
 }
 
+// ListTasks returns information on all registered cron tasks.
+func ListTasks() []TaskInfo {
+	taskMux.Lock()
+	defer taskMux.Unlock()
+
+	res := make([]TaskInfo, 0, len(taskList))
+	for _, t := range taskList {
+		info := TaskInfo{
+			EntryID: t.EntryID,
+			Spec:    t.Spec,
+			Name:    t.Name,
+		}
+		if c != nil && t.EntryID > 0 {
+			entry := c.Entry(t.EntryID)
+			info.NextRun = entry.Next
+			info.PrevRun = entry.Prev
+		}
+		res = append(res, info)
+	}
+	return res
+}
+
+// RemoveTask removes a task by its cron EntryID.
+func RemoveTask(entryID cron.EntryID) {
+	taskMux.Lock()
+	defer taskMux.Unlock()
+
+	if c != nil {
+		c.Remove(entryID)
+	}
+	filtered := taskSlice{}
+	for _, t := range taskList {
+		if t.EntryID != entryID {
+			filtered = append(filtered, t)
+		}
+	}
+	taskList = filtered
+}
+
+// RemoveTaskByName removes tasks matching the function name.
+func RemoveTaskByName(name string) bool {
+	taskMux.Lock()
+	defer taskMux.Unlock()
+
+	found := false
+	filtered := taskSlice{}
+	for _, t := range taskList {
+		if t.Name == name {
+			found = true
+			if c != nil && t.EntryID > 0 {
+				c.Remove(t.EntryID)
+			}
+		} else {
+			filtered = append(filtered, t)
+		}
+	}
+	taskList = filtered
+	return found
+}
+
 func WrapCronTask(f func(ctx context.Context), doneCallback func(), timeout ...time.Duration) func() {
 	name := runtime.FuncForPC(reflect.ValueOf(f).Pointer()).Name()
 

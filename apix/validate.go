@@ -1,8 +1,10 @@
 package apix
 
 import (
+	"encoding/json"
 	"fmt"
 	"reflect"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -15,10 +17,14 @@ var (
 	bindingValidator  *validator.Validate
 	validateValidator *validator.Validate
 	validateOnce      sync.Once
+
+	mobileRegexp = regexp.MustCompile(`^1[3-9]\d{9}$`)
+	idCardRegexp = regexp.MustCompile(`^[1-9]\d{5}(18|19|20)\d{2}((0[1-9])|(1[0-2]))(([0-2][1-9])|10|20|30|31)\d{3}[0-9Xx]$`)
+	semverRegexp = regexp.MustCompile(`^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$`)
 )
 
-func registerTimeValidators(v *validator.Validate) {
-	// 1. datetime validator: fixed format "2006-01-02 15:04:05", or custom layout via param
+func registerBuiltinValidators(v *validator.Validate) {
+	// 1. datetime validator: default "2006-01-02 15:04:05", or custom layout via param
 	_ = v.RegisterValidation("datetime", func(fl validator.FieldLevel) bool {
 		val := fl.Field().String()
 		if val == "" {
@@ -33,7 +39,7 @@ func registerTimeValidators(v *validator.Validate) {
 		return err == nil
 	})
 
-	// 2. date validator: fixed format "2006-01-02", or custom layout via param
+	// 2. date validator: default "2006-01-02", or custom layout via param
 	_ = v.RegisterValidation("date", func(fl validator.FieldLevel) bool {
 		val := fl.Field().String()
 		if val == "" {
@@ -48,7 +54,7 @@ func registerTimeValidators(v *validator.Validate) {
 		return err == nil
 	})
 
-	// 3. time validator: fixed format "15:04:05", or custom layout via param
+	// 3. time validator: default "15:04:05", or custom layout via param
 	_ = v.RegisterValidation("time", func(fl validator.FieldLevel) bool {
 		val := fl.Field().String()
 		if val == "" {
@@ -61,6 +67,50 @@ func registerTimeValidators(v *validator.Validate) {
 		}
 		_, err := time.Parse("15:04:05", val)
 		return err == nil
+	})
+
+	// 4. mobile validator
+	_ = v.RegisterValidation("mobile", func(fl validator.FieldLevel) bool {
+		val := fl.Field().String()
+		if val == "" {
+			return true
+		}
+		return mobileRegexp.MatchString(val)
+	})
+	_ = v.RegisterValidation("phone", func(fl validator.FieldLevel) bool {
+		val := fl.Field().String()
+		if val == "" {
+			return true
+		}
+		return mobileRegexp.MatchString(val)
+	})
+
+	// 5. idcard validator
+	_ = v.RegisterValidation("idcard", func(fl validator.FieldLevel) bool {
+		val := fl.Field().String()
+		if val == "" {
+			return true
+		}
+		return idCardRegexp.MatchString(val)
+	})
+
+	// 6. json_str validator
+	_ = v.RegisterValidation("json_str", func(fl validator.FieldLevel) bool {
+		val := fl.Field().String()
+		if val == "" {
+			return true
+		}
+		var js json.RawMessage
+		return json.Unmarshal([]byte(val), &js) == nil
+	})
+
+	// 7. semver validator
+	_ = v.RegisterValidation("semver", func(fl validator.FieldLevel) bool {
+		val := fl.Field().String()
+		if val == "" {
+			return true
+		}
+		return semverRegexp.MatchString(val)
 	})
 }
 
@@ -75,6 +125,9 @@ func initValidators() {
 				name = strings.SplitN(fld.Tag.Get("form"), ",", 2)[0]
 			}
 			if name == "" {
+				name = strings.SplitN(fld.Tag.Get("query"), ",", 2)[0]
+			}
+			if name == "" {
 				name = fld.Name
 			}
 			return name
@@ -84,22 +137,31 @@ func initValidators() {
 		bindingValidator = validator.New()
 		bindingValidator.SetTagName("binding")
 		bindingValidator.RegisterTagNameFunc(tagNameFunc)
-		registerTimeValidators(bindingValidator)
+		registerBuiltinValidators(bindingValidator)
 
 		// Standard Go validator convention: validate:"..."
 		validateValidator = validator.New()
 		validateValidator.RegisterTagNameFunc(tagNameFunc)
-		registerTimeValidators(validateValidator)
+		registerBuiltinValidators(validateValidator)
 	})
 }
 
-// GetValidator returns the global validator instance (defaults to binding tag)
+// GetValidator returns the global validator instance (defaults to binding tag).
 func GetValidator() *validator.Validate {
 	initValidators()
 	return bindingValidator
 }
 
-// ValidateStruct validates a struct using validation tags (supports both binding:"..." and validate:"...")
+// RegisterValidation registers a custom validation function to both binding and validate validators.
+func RegisterValidation(tag string, fn validator.Func) error {
+	initValidators()
+	if err := bindingValidator.RegisterValidation(tag, fn); err != nil {
+		return err
+	}
+	return validateValidator.RegisterValidation(tag, fn)
+}
+
+// ValidateStruct validates a struct using validation tags (supports both binding:"..." and validate:"...").
 func ValidateStruct(obj interface{}) *errors.Error {
 	if obj == nil {
 		return nil
@@ -134,6 +196,15 @@ func ValidateStruct(obj interface{}) *errors.Error {
 	return nil
 }
 
+// ValidateVar validates a single variable against a validator tag rule (e.g. "required,email").
+func ValidateVar(field any, tag string) *errors.Error {
+	initValidators()
+	if err := bindingValidator.Var(field, tag); err != nil {
+		return formatValidationError(err)
+	}
+	return nil
+}
+
 func formatValidationError(err error) *errors.Error {
 	if validationErrs, ok := err.(validator.ValidationErrors); ok {
 		var errMsgs []string
@@ -150,10 +221,22 @@ func formatValidationError(err error) *errors.Error {
 				errMsgs = append(errMsgs, fmt.Sprintf("%s must be at most %s", field, param))
 			case "email":
 				errMsgs = append(errMsgs, fmt.Sprintf("%s must be a valid email address", field))
+			case "url":
+				errMsgs = append(errMsgs, fmt.Sprintf("%s must be a valid URL", field))
+			case "ip":
+				errMsgs = append(errMsgs, fmt.Sprintf("%s must be a valid IP address", field))
 			case "len":
 				errMsgs = append(errMsgs, fmt.Sprintf("%s length must be %s", field, param))
 			case "oneof":
 				errMsgs = append(errMsgs, fmt.Sprintf("%s must be one of [%s]", field, param))
+			case "mobile", "phone":
+				errMsgs = append(errMsgs, fmt.Sprintf("%s must be a valid mobile phone number", field))
+			case "idcard":
+				errMsgs = append(errMsgs, fmt.Sprintf("%s must be a valid ID card number", field))
+			case "json_str":
+				errMsgs = append(errMsgs, fmt.Sprintf("%s must be a valid JSON string", field))
+			case "semver":
+				errMsgs = append(errMsgs, fmt.Sprintf("%s must be a valid semantic version", field))
 			case "datetime":
 				if param != "" {
 					errMsgs = append(errMsgs, fmt.Sprintf("%s must be formatted as '%s'", field, param))

@@ -221,6 +221,45 @@ func GetBytes(ctx context.Context, key string) ([]byte, error) {
 	return GetStorage().GetBytes(ctx, key)
 }
 
+// SaveString saves a string content to storage.
+func SaveString(ctx context.Context, key, content string, contentType ...string) (*PutResult, error) {
+	ct := "text/plain; charset=utf-8"
+	if len(contentType) > 0 && contentType[0] != "" {
+		ct = contentType[0]
+	}
+	return PutBytes(ctx, key, []byte(content), ct)
+}
+
+// ReadString reads an object content as string.
+func ReadString(ctx context.Context, key string) (string, error) {
+	data, err := GetBytes(ctx, key)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+// DownloadToFile downloads an object directly to a local destination path.
+func DownloadToFile(ctx context.Context, key, localPath string) error {
+	rc, err := Get(ctx, key)
+	if err != nil {
+		return err
+	}
+	defer rc.Close()
+
+	if err := os.MkdirAll(filepath.Dir(localPath), 0755); err != nil {
+		return err
+	}
+	f, err := os.Create(localPath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	_, err = io.Copy(f, rc)
+	return err
+}
+
 func GetURL(ctx context.Context, key string, expires time.Duration) (string, error) {
 	return GetStorage().GetURL(ctx, key, expires)
 }

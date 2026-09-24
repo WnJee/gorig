@@ -5,11 +5,6 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
-	"github.com/WnJee/gorig/utils/errors"
-	"github.com/WnJee/gorig/utils/logger"
-	"github.com/gin-gonic/gin"
-	"github.com/spf13/cast"
-	"go.uber.org/zap"
 	"io"
 	"net/http"
 	"net/url"
@@ -17,26 +12,33 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/WnJee/gorig/utils/errors"
+	"github.com/WnJee/gorig/utils/logger"
+	"github.com/gin-gonic/gin"
+	"github.com/spf13/cast"
+	"go.uber.org/zap"
 )
 
 var client atomic.Pointer[http.Client]
-var timeOut = 120 * time.Second
+var defaultTimeout = 120 * time.Second
 
 func init() {
-	client.Store(&http.Client{Timeout: timeOut})
+	client.Store(&http.Client{Timeout: defaultTimeout})
 }
 
 func getClient() *http.Client {
 	if current := client.Load(); current != nil {
 		return current
 	}
-	defaultClient := &http.Client{Timeout: timeOut}
+	defaultClient := &http.Client{Timeout: defaultTimeout}
 	if client.CompareAndSwap(nil, defaultClient) {
 		return defaultClient
 	}
 	return client.Load()
 }
 
+// SetTimeOutTmp sets temporary client timeout for duration t.
 func SetTimeOutTmp(t time.Duration) {
 	if t <= 0 {
 		return
@@ -75,6 +77,7 @@ func readHTTPResponse(response *http.Response) (string, *errors.Error) {
 	return string(body), nil
 }
 
+// Get sends GET request and returns raw response string.
 func Get(baseURL string, params map[string]string) (resp string, err *errors.Error) {
 	reqURL, buildErr := buildURL(baseURL, params)
 	if buildErr != nil {
@@ -88,6 +91,7 @@ func Get(baseURL string, params map[string]string) (resp string, err *errors.Err
 	return readHTTPResponse(response)
 }
 
+// GetHeader sends GET request with custom headers.
 func GetHeader(baseURL string, params map[string]string, header map[string]string) (resp string, err *errors.Error) {
 	reqURL, buildErr := buildURL(baseURL, params)
 	if buildErr != nil {
@@ -108,6 +112,24 @@ func GetHeader(baseURL string, params map[string]string, header map[string]strin
 	return readHTTPResponse(response)
 }
 
+// GetJSON performs a GET request and unmarshals the JSON response into *T.
+func GetJSON[T any](baseURL string, params map[string]string, header ...map[string]string) (*T, *errors.Error) {
+	var h map[string]string
+	if len(header) > 0 {
+		h = header[0]
+	}
+	respStr, err := GetHeader(baseURL, params, h)
+	if err != nil {
+		return nil, err
+	}
+	var target T
+	if unmarshalErr := json.Unmarshal([]byte(respStr), &target); unmarshalErr != nil {
+		return nil, errors.Sys("json unmarshal failed", unmarshalErr)
+	}
+	return &target, nil
+}
+
+// GetMap performs GET request returning parsed map.
 func GetMap(baseURL string, params map[string]string) (map[string]interface{}, *errors.Error) {
 	resp, err := Get(baseURL, params)
 	if err != nil {
@@ -116,6 +138,7 @@ func GetMap(baseURL string, params map[string]string) (map[string]interface{}, *
 	return ParseJSON(resp), nil
 }
 
+// GetMapHeader performs GET request with headers returning parsed map.
 func GetMapHeader(baseURL string, params map[string]string, header map[string]string) (map[string]interface{}, *errors.Error) {
 	resp, err := GetHeader(baseURL, params, header)
 	if err != nil {
@@ -124,6 +147,7 @@ func GetMapHeader(baseURL string, params map[string]string, header map[string]st
 	return ParseJSON(resp), nil
 }
 
+// PostForm performs form POST request.
 func PostForm(baseURL string, params map[string]string) (resp string, err *errors.Error) {
 	values := url.Values{}
 	for k, v := range params {
@@ -137,6 +161,7 @@ func PostForm(baseURL string, params map[string]string) (resp string, err *error
 	return readHTTPResponse(response)
 }
 
+// PostJSONResp performs JSON POST returning response body string.
 func PostJSONResp(baseURL string, params interface{}) (resp string, err *errors.Error) {
 	jsonData, marshalErr := json.Marshal(params)
 	if marshalErr != nil {
@@ -145,12 +170,13 @@ func PostJSONResp(baseURL string, params interface{}) (resp string, err *errors.
 	logger.Info(nil, "PostJSONResp", zap.String("url", baseURL))
 
 	response, httpErr := getClient().Post(baseURL, "application/json", bytes.NewReader(jsonData))
-	if httpErr != nil { // 注意这里的错误检查修正
+	if httpErr != nil {
 		return "", errors.Sys(fmt.Sprintf("http.Post error: %v", httpErr))
 	}
 	return readHTTPResponse(response)
 }
 
+// PostJSONRespHeader performs JSON POST with custom headers returning response string.
 func PostJSONRespHeader(baseURL string, params interface{}, header map[string]string) (resp string, err *errors.Error) {
 	jsonData, marshalErr := json.Marshal(params)
 	if marshalErr != nil {
@@ -174,30 +200,48 @@ func PostJSONRespHeader(baseURL string, params interface{}, header map[string]st
 	return readHTTPResponse(response)
 }
 
+// Post sends a JSON POST request and unmarshals response into *T.
+func Post[T any](baseURL string, body any, header ...map[string]string) (*T, *errors.Error) {
+	var h map[string]string
+	if len(header) > 0 {
+		h = header[0]
+	}
+	respStr, err := PostJSONRespHeader(baseURL, body, h)
+	if err != nil {
+		return nil, err
+	}
+	var target T
+	if unmarshalErr := json.Unmarshal([]byte(respStr), &target); unmarshalErr != nil {
+		return nil, errors.Sys("json unmarshal failed", unmarshalErr)
+	}
+	return &target, nil
+}
+
+// PostJSON performs JSON POST returning parsed map.
 func PostJSON(baseURL string, params interface{}) (map[string]interface{}, *errors.Error) {
 	respStr, err := PostJSONResp(baseURL, params)
 	if err != nil {
 		if respStr == "" {
 			return nil, err
-		} else {
-			return ParseJSON(respStr), err
 		}
+		return ParseJSON(respStr), err
 	}
 	return ParseJSON(respStr), nil
 }
 
+// PostJSONHeader performs JSON POST with headers returning parsed map.
 func PostJSONHeader(baseURL string, params interface{}, header map[string]string) (map[string]interface{}, *errors.Error) {
 	respStr, err := PostJSONRespHeader(baseURL, params, header)
 	if err != nil {
 		if respStr == "" {
 			return nil, err
-		} else {
-			return ParseJSON(respStr), err
 		}
+		return ParseJSON(respStr), err
 	}
 	return ParseJSON(respStr), nil
 }
 
+// PostJSONByCtx copies Authorization header from gin context and sends JSON POST.
 func PostJSONByCtx(ctx *gin.Context, baseURL string, params interface{}) (map[string]interface{}, *errors.Error) {
 	header := ctx.GetHeader("Authorization")
 	auth := map[string]string{"Authorization": header}
@@ -207,6 +251,7 @@ func PostJSONByCtx(ctx *gin.Context, baseURL string, params interface{}) (map[st
 	return PostJSONHeader(baseURL, params, auth)
 }
 
+// GetByCtx copies Authorization header from gin context and sends GET.
 func GetByCtx(ctx *gin.Context, baseURL string, params map[string]interface{}) (map[string]interface{}, *errors.Error) {
 	header := ctx.GetHeader("Authorization")
 	auth := map[string]string{"Authorization": header}
@@ -217,6 +262,7 @@ func GetByCtx(ctx *gin.Context, baseURL string, params map[string]interface{}) (
 	return GetMapHeader(baseURL, strParams, auth)
 }
 
+// PostXML sends XML POST request.
 func PostXML(baseURL string, params map[string]string) (resp string, err *errors.Error) {
 	namePattern := regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_.-]*$`)
 	var xmlBuffer bytes.Buffer
@@ -244,6 +290,7 @@ func PostXML(baseURL string, params map[string]string) (resp string, err *errors
 	return readHTTPResponse(response)
 }
 
+// ParseJSON parses a JSON string into map[string]interface{}.
 func ParseJSON(jsonStr string) map[string]interface{} {
 	if jsonStr == "" {
 		return nil
@@ -252,11 +299,11 @@ func ParseJSON(jsonStr string) map[string]interface{} {
 	err := json.Unmarshal([]byte(jsonStr), &result)
 	if err != nil {
 		logger.Error(nil, fmt.Sprintf("ParseJSON error: result=%v, err=%v", result, err))
-		//panic(err)
 	}
 	return result
 }
 
+// ParseXML parses XML string into struct *T.
 func ParseXML[T any](xmlStr string) (*T, *errors.Error) {
 	var result T
 	err := xml.Unmarshal([]byte(xmlStr), &result)
@@ -266,7 +313,7 @@ func ParseXML[T any](xmlStr string) (*T, *errors.Error) {
 	return &result, nil
 }
 
-// FetchImage fetches image from url
+// FetchImage fetches image bytes and MIME type from URL.
 func FetchImage(url string) (imgData []byte, contentType, imgType string, error *errors.Error) {
 	var imageType string
 	if strings.Contains(url, ".") && len(url) > 4 {

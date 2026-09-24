@@ -3,10 +3,12 @@ package tokenx
 import (
 	"context"
 	"crypto/rand"
+	"sync"
+	"time"
+
 	"github.com/WnJee/gorig/global/variable"
 	"github.com/WnJee/gorig/utils/errors"
 	"github.com/WnJee/gorig/utils/logger"
-	"sync"
 )
 
 type GeneratorType int
@@ -66,10 +68,37 @@ func GetDef() *TokenService {
 	return Get(Jwt, Memory)
 }
 
+// GenerateToken generates and records a token using the default TokenService.
+func GenerateToken(userID string, userInfo map[string]interface{}, expireDuration ...time.Duration) (string, error) {
+	exp := int64(defExpire)
+	if len(expireDuration) > 0 && expireDuration[0] > 0 {
+		exp = int64(expireDuration[0].Seconds())
+	}
+	token, err := GetDef().Manager.GenerateAndRecord(context.Background(), userID, userInfo, exp)
+	if err != nil {
+		return "", err
+	}
+	return token, nil
+}
+
+// ParseToken parses a token string and returns CustomClaims.
+func ParseToken(token string) (*CustomClaims, error) {
+	claims, err := GetDef().Generator.Parse(token)
+	if err != nil {
+		return nil, err
+	}
+	return claims, nil
+}
+
+// DestroyToken invalidates a token in the manager.
+func DestroyToken(token string) {
+	GetDef().Manager.Destroy(token)
+}
+
 func Get(generatorType GeneratorType, managerType ManagerType) *TokenService {
 	generator := getGenerator(generatorType)
 	return &TokenService{
-		Generator: getGenerator(generatorType),
+		Generator: generator,
 		Manager:   getManager(managerType, generator),
 	}
 }
