@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/WnJee/gorig/utils/errors"
 	"github.com/go-playground/validator/v10"
@@ -15,6 +16,65 @@ var (
 	validateValidator *validator.Validate
 	validateOnce      sync.Once
 )
+
+func registerTimeValidators(v *validator.Validate) {
+	// 1. datetime validator: default "2006-01-02 15:04:05" or RFC3339, or custom layout via param
+	_ = v.RegisterValidation("datetime", func(fl validator.FieldLevel) bool {
+		val := fl.Field().String()
+		if val == "" {
+			return true
+		}
+		param := fl.Param()
+		if param != "" {
+			_, err := time.Parse(param, val)
+			return err == nil
+		}
+		for _, layout := range []string{"2006-01-02 15:04:05", time.RFC3339, "2006-01-02T15:04:05"} {
+			if _, err := time.Parse(layout, val); err == nil {
+				return true
+			}
+		}
+		return false
+	})
+
+	// 2. date validator: default "2006-01-02" or custom layout via param
+	_ = v.RegisterValidation("date", func(fl validator.FieldLevel) bool {
+		val := fl.Field().String()
+		if val == "" {
+			return true
+		}
+		param := fl.Param()
+		if param != "" {
+			_, err := time.Parse(param, val)
+			return err == nil
+		}
+		for _, layout := range []string{"2006-01-02", "2006/01/02", "20060102"} {
+			if _, err := time.Parse(layout, val); err == nil {
+				return true
+			}
+		}
+		return false
+	})
+
+	// 3. time validator: default "15:04:05" or "15:04", or custom layout via param
+	_ = v.RegisterValidation("time", func(fl validator.FieldLevel) bool {
+		val := fl.Field().String()
+		if val == "" {
+			return true
+		}
+		param := fl.Param()
+		if param != "" {
+			_, err := time.Parse(param, val)
+			return err == nil
+		}
+		for _, layout := range []string{"15:04:05", "15:04"} {
+			if _, err := time.Parse(layout, val); err == nil {
+				return true
+			}
+		}
+		return false
+	})
+}
 
 func initValidators() {
 	validateOnce.Do(func() {
@@ -36,10 +96,12 @@ func initValidators() {
 		bindingValidator = validator.New()
 		bindingValidator.SetTagName("binding")
 		bindingValidator.RegisterTagNameFunc(tagNameFunc)
+		registerTimeValidators(bindingValidator)
 
 		// Standard Go validator convention: validate:"..."
 		validateValidator = validator.New()
 		validateValidator.RegisterTagNameFunc(tagNameFunc)
+		registerTimeValidators(validateValidator)
 	})
 }
 
@@ -104,6 +166,24 @@ func formatValidationError(err error) *errors.Error {
 				errMsgs = append(errMsgs, fmt.Sprintf("%s length must be %s", field, param))
 			case "oneof":
 				errMsgs = append(errMsgs, fmt.Sprintf("%s must be one of [%s]", field, param))
+			case "datetime":
+				if param != "" {
+					errMsgs = append(errMsgs, fmt.Sprintf("%s must be formatted as '%s'", field, param))
+				} else {
+					errMsgs = append(errMsgs, fmt.Sprintf("%s must be a valid datetime (e.g. '2006-01-02 15:04:05')", field))
+				}
+			case "date":
+				if param != "" {
+					errMsgs = append(errMsgs, fmt.Sprintf("%s must be formatted as '%s'", field, param))
+				} else {
+					errMsgs = append(errMsgs, fmt.Sprintf("%s must be a valid date (e.g. '2006-01-02')", field))
+				}
+			case "time":
+				if param != "" {
+					errMsgs = append(errMsgs, fmt.Sprintf("%s must be formatted as '%s'", field, param))
+				} else {
+					errMsgs = append(errMsgs, fmt.Sprintf("%s must be a valid time (e.g. '15:04:05')", field))
+				}
 			default:
 				if param != "" {
 					errMsgs = append(errMsgs, fmt.Sprintf("%s failed validation on '%s(%s)'", field, tag, param))
