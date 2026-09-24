@@ -1,12 +1,14 @@
 package httpx
 
 import (
-	"github.com/gin-gonic/gin"
 	"github.com/WnJee/gorig/apix/response"
+	configure "github.com/WnJee/gorig/utils/cofigure"
 	"github.com/WnJee/gorig/utils/logger"
 	"github.com/WnJee/gorig/utils/sys"
+	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 	"hash/fnv"
+	"net/http"
 	"sync"
 	"time"
 )
@@ -39,10 +41,14 @@ type shard struct {
 
 var whiteList = map[string]bool{}
 
-func DebouceAw(path ...string) {
+func DebounceAllow(path ...string) {
 	for _, p := range path {
 		whiteList[p] = true
 	}
+}
+
+func DebouceAw(path ...string) {
+	DebounceAllow(path...)
 }
 
 func DebounceDisable() {
@@ -51,40 +57,41 @@ func DebounceDisable() {
 
 func Debounce(duration time.Duration) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if !enable {
+		if !enable || !configure.GetBool("api.debounce.enable", true) {
 			c.Next()
 			return
 		}
-		//logger.Info(c, "Debounce", zap.Any("path", c.Request.URL.Path))
 		if _, ok := whiteList[c.Request.URL.Path]; ok {
 			c.Next()
 			return
 		}
 
-		path := c.Request.URL.Path
-		if c.Request.Method == "GET" {
-			path += "?" + c.Request.URL.RawQuery
+		// Safe methods (GET, HEAD, OPTIONS) bypass debounce by default to avoid blocking concurrent queries,
+		// unless api.debounce.allMethods is explicitly enabled.
+		if !configure.GetBool("api.debounce.allMethods", false) {
+			switch c.Request.Method {
+			case http.MethodGet, http.MethodHead, http.MethodOptions:
+				c.Next()
+				return
+			}
 		}
 
+		path := c.Request.URL.Path
 		token := GetTokenByCtx(c, false)
 		id := GetUserIDByToken(token)
 
 		var requestKey string
 		if id != "" {
-			requestKey = path + ":id:" + id
+			requestKey = c.Request.Method + ":" + path + ":id:" + id
 		} else {
 			clientIP := c.ClientIP()
-			requestKey = path + ":ip:" + clientIP
+			requestKey = c.Request.Method + ":" + path + ":ip:" + clientIP
 		}
-
-		//requestMap.Lock()
-		//lastRequestTime, exists := requestMap.m[requestKey]
 
 		now := time.Now()
 		lastRequestTime, allowed := srm.Allow(requestKey, now, duration)
 		since := now.Sub(lastRequestTime)
 		if !allowed {
-			//requestMap.Unlock()
 			logger.Error(c, "Debounce", zap.Any("requestKey", requestKey), zap.Any("lastRequestTime", lastRequestTime), zap.Any("since", since), zap.Any("duration", duration))
 			response.ErrorTooManyRequests(c)
 			return

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sync"
 	"time"
 )
@@ -21,7 +22,22 @@ type JSONFileCache[T any] struct {
 	lock     sync.RWMutex
 }
 
+var (
+	cacheJsonIns sync.Map // map[string]any, caches JSONFileCache[T] instances
+	jsonLock     sync.Mutex
+)
+
 func NewJSONCache[T any](cacheType string) (*JSONFileCache[T], error) {
+	jsonLock.Lock()
+	defer jsonLock.Unlock()
+
+	instanceKey := cacheType + "|" + reflect.TypeOf((*T)(nil)).Elem().String()
+	if val, ok := cacheJsonIns.Load(instanceKey); ok {
+		if typed, ok := val.(*JSONFileCache[T]); ok {
+			return typed, nil
+		}
+	}
+
 	dir := ".cache"
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return nil, err
@@ -33,7 +49,11 @@ func NewJSONCache[T any](cacheType string) (*JSONFileCache[T], error) {
 		data:     make(map[string]jsonCacheItem[T]),
 	}
 	err := cache.loadFromFile()
-	return cache, err
+	if err != nil {
+		return nil, err
+	}
+	cacheJsonIns.Store(instanceKey, cache)
+	return cache, nil
 }
 
 func (c *JSONFileCache[T]) IsInitialized() bool {

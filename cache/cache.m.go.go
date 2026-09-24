@@ -17,6 +17,16 @@ type GoCache[T any] struct {
 	signals sync.Map // map[string]chan struct{}
 }
 
+var (
+	defaultSharedGoCache = cache.New(time.Hour, 10*time.Minute)
+)
+
+func NewSharedGoCache[T any]() *GoCache[T] {
+	return &GoCache[T]{
+		cache: defaultSharedGoCache,
+	}
+}
+
 func NewGoCache[T any](defaultExpiration, cleanupInterval time.Duration) *GoCache[T] {
 	return &GoCache[T]{
 		cache: cache.New(defaultExpiration, cleanupInterval),
@@ -179,16 +189,22 @@ func (g *GoCache[T]) Incr(key string) (int64, error) {
 	defer lock.Unlock()
 
 	val, found := g.cache.Get(key)
-	if !found {
-		val = int64(0)
+	var curr int64
+	if found {
+		switch v := val.(type) {
+		case int64:
+			curr = v
+		case int:
+			curr = int64(v)
+		case float64:
+			curr = int64(v)
+		default:
+			return 0, fmt.Errorf("type assertion failed for key %s", key)
+		}
 	}
-	v, ok := any(val).(int64)
-	if !ok {
-		return 0, fmt.Errorf("type assertion failed for key %s", key)
-	}
-	v++
-	g.cache.Set(key, v, cache.NoExpiration)
-	return v, nil
+	curr++
+	g.cache.Set(key, curr, cache.NoExpiration)
+	return curr, nil
 }
 
 func (g *GoCache[T]) Expire(key string, expiration time.Duration) error {
