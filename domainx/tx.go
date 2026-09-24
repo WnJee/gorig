@@ -29,6 +29,18 @@ func GetTxFromContext(ctx context.Context, dbName string) *gorm.DB {
 	return nil
 }
 
+// WithTx binds a *gorm.DB transaction or connection to a context for a specific dbName.
+func WithTx(ctx context.Context, dbName string, tx *gorm.DB) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	dbName = strings.ToLower(strings.TrimSpace(dbName))
+	if dbName == "" {
+		dbName = "main"
+	}
+	return context.WithValue(ctx, txCtxKey{dbName: dbName}, tx)
+}
+
 // Transaction executes fn inside a database transaction for the default/specified MySQL database.
 // If the context already contains an active transaction for the same database, it reuses it (nested/propagation support).
 // If fn returns an error, the transaction is rolled back; otherwise it is committed.
@@ -56,7 +68,7 @@ func Transaction(ctx context.Context, fn func(txCtx context.Context) error, dbNa
 
 	// 3. Begin GORM transaction
 	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		txCtx := context.WithValue(ctx, txCtxKey{dbName: dbName}, tx)
+		txCtx := WithTx(ctx, dbName, tx)
 		return fn(txCtx)
 	})
 }

@@ -19,6 +19,7 @@ type Con struct {
 	Sort           Sorts        `gorm:"-" bson:"-" json:"-"`
 	SelectFields   []string     `gorm:"-" bson:"-" json:"-"`
 	OmitFields     []string     `gorm:"-" bson:"-" json:"-"`
+	Limit          int          `gorm:"-" bson:"-" json:"-"`
 	SaveCreateTime func()       `gorm:"-" bson:"-" json:"-"`
 	SaveUpdateTime func()       `gorm:"-" bson:"-" json:"-"`
 }
@@ -125,6 +126,13 @@ func (c *Con) SetSelectFields(fields ...string) {
 
 func (c *Con) SetOmitFields(fields ...string) {
 	c.OmitFields = sanitizeFields(fields...)
+}
+
+func (c *Con) SetLimit(limit int) {
+	if c == nil {
+		return
+	}
+	c.Limit = limit
 }
 
 func sanitizeFields(fields ...string) []string {

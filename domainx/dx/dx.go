@@ -51,6 +51,7 @@ type (
 		AddMatch(m *domainx.Match) DQuery[T]
 		AddMatches(ms *domainx.Matches) DQuery[T]
 		Sort(field string, asc ...bool) DQuery[T]
+		Limit(limit int) DQuery[T]
 		Select(fields ...string) DQuery[T]
 		Omit(fields ...string) DQuery[T]
 
@@ -257,6 +258,13 @@ func (d *dx[T]) Sort(field string, asc ...bool) DQuery[T] {
 	return d
 }
 
+func (d *dx[T]) Limit(limit int) DQuery[T] {
+	if d.complex != nil && d.complex.Con != nil {
+		d.complex.Con.SetLimit(limit)
+	}
+	return d
+}
+
 func (d *dx[T]) Select(fields ...string) DQuery[T] {
 	if d.complex != nil && d.complex.Con != nil {
 		d.complex.Con.SetSelectFields(fields...)
@@ -373,20 +381,20 @@ func (d *dx[T]) Find() (domainx.ComplexList[T], *errors.Error) {
 	if err := d.ready(); err != nil {
 		return nil, err
 	}
-	if err := d.checkMatches(); err != nil {
-		return nil, err
+	var matchList []domainx.Match
+	if d.matches != nil && len(*d.matches) > 0 {
+		matchList = *d.matches
+	} else if d.complex.Con.Limit <= 0 {
+		d.complex.Con.Limit = 500
 	}
 	var result []*domainx.Complex[T]
-	if err := domainx.FindByMatch(d.complex.Con, *d.matches, &result); err != nil {
+	if err := domainx.FindByMatch(d.complex.Con, matchList, &result); err != nil {
 		return nil, err
 	}
 	return result, nil
 }
 
 func (d *dx[T]) FindEach(handle func(*domainx.Complex[T]) *errors.Error) *errors.Error {
-	if err := d.checkMatches(); err != nil {
-		return err
-	}
 	find, e := d.Find()
 	if e != nil {
 		return e
@@ -400,7 +408,7 @@ func (d *dx[T]) FindEach(handle func(*domainx.Complex[T]) *errors.Error) *errors
 }
 
 func (d *dx[T]) AllEach(handle func(*domainx.Complex[T]) *errors.Error) *errors.Error {
-	if err := d.checkMatches(); err != nil {
+	if err := d.ready(); err != nil {
 		return err
 	}
 	var lastID int64

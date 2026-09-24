@@ -364,7 +364,11 @@ func (s *gormDBService) FindByMatch(c *Con, matchList []Match, result interface{
 	tx, near := matchMysqlCond(matchList, tx)
 	tx = sortMysqlCond(c.Sort, tx)
 	tx = applyMysqlFields(tx, c, near)
-	if err := tx.Limit(10000).Find(result).Error; err != nil {
+	limit := 10000
+	if c != nil && c.Limit > 0 {
+		limit = c.Limit
+	}
+	if err := tx.Limit(limit).Find(result).Error; err != nil {
 		return err
 	}
 	return tx.Error

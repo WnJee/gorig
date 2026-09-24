@@ -548,7 +548,11 @@ func (s *mongoDBService) FindByMatch(c *Con, matchList []Match, result interface
 		if projection := buildMongoProjection(c); projection != nil {
 			query = query.Select(projection)
 		}
-		mErr := query.Limit(10000).All(result)
+		limit := int64(10000)
+		if c != nil && c.Limit > 0 {
+			limit = int64(c.Limit)
+		}
+		mErr := query.Limit(limit).All(result)
 		return mErr
 	}
 }
